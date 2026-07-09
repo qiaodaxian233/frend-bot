@@ -63,3 +63,12 @@ description: >
 - [ ] README 能力表 / DEVLOG 新条目 / HANDOVER 0.5 状态行,三处同步更新
 - [ ] commit + push 成功(`git log origin/main -1` 核实),没 PAT 就交 .patch
 - [ ] 回复作者:结论 + 待编译验证清单 + 需要作者做的事,不啰嗦
+
+## LLM 后端(m2 加入)踩坑备忘
+
+- **协议只有一个**:OpenAI `/chat/completions`。Ollama(`http://localhost:11434/v1`)、LM Studio、云端 OpenAI 全兼容,永远不要为某一家单写客户端。
+- **零新依赖**:HTTP 用 JDK `java.net.http.HttpClient`,JSON 用 MC 自带 gson——别往 build.gradle 加 okhttp/jackson,会平白引入版本冲突风险。
+- **线程红线**:CHAT_MESSAGE 回调在服务器主线程,网络请求必须 `sendAsync`;拿到结果后必须 `server.execute(...)` 切回主线程才能碰实体/世界。在主线程 `.join()`/`.get()` 等网络 = 卡服事故。
+- **行为红线**:模型输出只当聊天文本广播,永远不解析成游戏操作。指令关键词在 `handleCommand` 里前置短路,轮不到 LLM。
+- **防刷屏三件套**:单飞标志(llmBusy)+ 最短间隔(llmMinIntervalSeconds)+ 失败退模板。改聊天逻辑时三件都不能丢。
+- **响应要清洗**:本地小模型可能吐 `<think>...</think>`、多行、整段引号——`FrendLlmClient.sanitize` 统一处理,新增后端也走它。

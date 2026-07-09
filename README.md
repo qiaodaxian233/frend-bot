@@ -14,7 +14,8 @@
 |---|---|---|
 | 类玩家 NPC | 玩家体型 + 玩家模型 + Steve 皮肤渲染;主人绑定,不会自然消失 | `entity/FrendEntity`、`client/render/FrendRenderer` |
 | 三种模式 | 跟随(小跑、不贴脸)/ 停留 / 回家(到家自动转停留、走不过去会说明) | `entity/FrendFollowOwnerGoal`、`entity/FrendGoHomeGoal` |
-| 规则层聊天 | 公屏说"跟我来 / 停下 / 过来 / 回家 / 报告状态"等关键词直接指挥;回话带随机延迟不秒回;没听懂且没喊名字就保持沉默不刷屏 | `system/FrendChatHandler` |
+| 规则层聊天 | 公屏说"跟我来 / 停下 / 过来 / 回家 / 报告状态"等关键词直接指挥;回话带随机延迟不秒回;没听懂且没在跟它说话就保持沉默不刷屏 | `system/FrendChatHandler` |
+| 可选 LLM 闲聊 | `chatBackend` 设为 `openai` 后,闲聊接 OpenAI 兼容接口(本地 Ollama / LM Studio / 云端 OpenAI 同协议);带对话记忆与"对话延续窗口";失败/超时自动退回规则模板;**指令关键词永远走规则,模型永不控制游戏** | `system/FrendLlmClient` |
 | "像人"细节 | 主人低血提醒(带冷却)、偶尔闲聊、受伤会喊、死前留遗言、跑丢才兜底传送并交代一句 | `entity/FrendEntity`、`system/FrendScheduler` |
 | 基础背包 | 27 格,主人右键打开(原版箱子界面);死亡/解散全部掉落;NBT 持久化 | `entity/FrendEntity` |
 | 家系统 | `/frend home set` 定家(记维度);"回家"走寻路,跨维度会说走不过去 | `entity/FrendEntity` |
@@ -51,6 +52,19 @@
 ## 四、配置
 
 首次运行生成 `config/frend.json`,可调项:每人 frend 上限、跟随距离/速度/跑丢传送开关、聊天半径与回话延迟、闲聊开关与冷却、低血提醒阈值、被动回血等。
+
+### 聊天大脑(默认纯本地,可选 LLM)
+
+```jsonc
+"chatBackend": "rules",                        // 默认:纯本地关键词规则,零依赖零联网
+// 想要更像真人的闲聊,改成 "openai" 并按需调下面几项:
+"openaiBaseUrl": "http://localhost:11434/v1",  // 默认本地 Ollama(先 ollama pull qwen2.5:7b 并 ollama serve);云端 OpenAI 用 https://api.openai.com/v1
+"openaiApiKey": "",                            // Ollama 留空;云端填 key
+"openaiModel": "qwen2.5:7b",                   // 云端例:gpt-4o-mini
+"llmPersonaExtra": ""                          // 给 frend 加口头禅/性格
+```
+
+不管哪个后端:**指令关键词(跟我来/停下/过来/回家/报告)永远走本地规则**,LLM 只负责闲聊文本,输出永远不会被解析成游戏操作;请求全异步不卡服,失败/超时自动退回规则模板。
 
 ## 五、路线图(见 docs/DESIGN.md)
 

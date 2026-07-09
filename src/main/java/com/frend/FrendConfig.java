@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 1;
+    public static final int CURRENT_CONFIG_VERSION = 2;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -52,6 +52,34 @@ public class FrendConfig {
     public boolean enableAmbientChat = true;
     /** 主动闲聊最短间隔(秒)。 */
     public int ambientChatCooldownSeconds = 240;
+
+    // ============ 聊天大脑 ============
+    /**
+     * 聊天后端:
+     * "rules"  = 纯本地关键词规则(默认,零依赖零联网);
+     * "openai" = OpenAI 兼容接口——本地 Ollama / LM Studio 或云端 OpenAI 都是同一个协议,
+     *            改 baseUrl/model/key 即可。只负责闲聊文本;指令关键词永远走规则,
+     *            模型输出永远不会被解析成游戏操作(行为红线)。
+     */
+    public String chatBackend = "rules";
+    /** OpenAI 兼容接口地址。默认指向本地 Ollama 的 /v1,全程不出网;云端 OpenAI 用 https://api.openai.com/v1。 */
+    public String openaiBaseUrl = "http://localhost:11434/v1";
+    /** API key。本地 Ollama 留空即可;云端服务填对应 key。 */
+    public String openaiApiKey = "";
+    /** 模型名。Ollama 例:qwen2.5:7b;OpenAI 例:gpt-4o-mini。 */
+    public String openaiModel = "qwen2.5:7b";
+    /** 单次请求超时(秒);超时/失败自动退回规则模板,绝不卡服务器主线程。 */
+    public int openaiTimeoutSeconds = 12;
+    /** LLM 回复最长字符数(像人:短句,超长截断)。 */
+    public int llmMaxReplyChars = 60;
+    /** 发给模型的最近对话条数(user/assistant 各算一条)。 */
+    public int llmHistoryEntries = 10;
+    /** 两次 LLM 请求最短间隔(秒),防止刷屏刷接口。 */
+    public int llmMinIntervalSeconds = 3;
+    /** 追加到人设提示词末尾的自定义设定(口头禅、性格等)。 */
+    public String llmPersonaExtra = "";
+    /** 对话延续窗口(秒):frend 刚说完话,这段时间内主人说话不用喊名字也算在跟它聊。 */
+    public int conversationWindowSeconds = 15;
 
     // ============ 照顾主人 ============
     /** 主人血量低时提醒。 */

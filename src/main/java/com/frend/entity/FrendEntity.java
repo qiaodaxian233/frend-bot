@@ -63,6 +63,12 @@ public class FrendEntity extends PathAwareEntity {
     private int ambientCooldown = 20 * 60; // 出生一分钟内不闲聊
     private int hurtTalkCooldown = 0;
 
+    // ===== 聊天记忆(不落盘):LLM 上下文 + "对话延续窗口" + 请求节流 =====
+    private final java.util.ArrayDeque<String[]> chatHistory = new java.util.ArrayDeque<>();
+    private long lastTalkMillis = 0;          // frend 上次开口时间
+    private long lastLlmMillis = 0;           // 上次发起 LLM 请求时间
+    private volatile boolean llmBusy = false; // 有请求在飞就不再发
+
     private static final String[] AMBIENT_LINES = {
             "这边风景不错,值得盖个观景台。",
             "你说……末影人整天搬方块图什么呢?",
@@ -243,6 +249,8 @@ public class FrendEntity extends PathAwareEntity {
     /** 立即向聊天半径内玩家广播一句话,格式 &lt;frend&gt; xxx。 */
     public void say(String msg) {
         if (this.getWorld().isClient) return;
+        this.lastTalkMillis = System.currentTimeMillis(); // 对话延续窗口从这一刻起算
+        rememberChat("assistant", msg);
         double r = FrendConfig.get().chatRadius;
         Text text = Text.literal("<" + this.getDisplayName().getString() + "> ").formatted(Formatting.AQUA)
                 .append(Text.literal(msg).formatted(Formatting.WHITE));
@@ -259,6 +267,39 @@ public class FrendEntity extends PathAwareEntity {
         int span = Math.max(1, c.replyDelayMaxTicks - c.replyDelayMinTicks);
         int delay = c.replyDelayMinTicks + this.random.nextInt(span);
         FrendScheduler.schedule(delay, () -> { if (this.isAlive()) say(msg); });
+    }
+
+    // ===================== 聊天记忆 / 对话窗口 / LLM 节流 =====================
+
+    /** 记一条对话(role: user/assistant)。只留最近 llmHistoryEntries 条,不落盘。 */
+    public void rememberChat(String role, String content) {
+        chatHistory.addLast(new String[]{role, content});
+        int max = Math.max(2, FrendConfig.get().llmHistoryEntries);
+        while (chatHistory.size() > max) chatHistory.pollFirst();
+    }
+
+    /** 最近对话快照(时间先后顺序)。 */
+    public java.util.List<String[]> chatHistorySnapshot() {
+        return new java.util.ArrayList<>(chatHistory);
+    }
+
+    /** frend 刚说完话的一小段时间内,主人不喊名字也算在跟它聊。 */
+    public boolean inConversationWindow() {
+        return System.currentTimeMillis() - lastTalkMillis
+                < FrendConfig.get().conversationWindowSeconds * 1000L;
+    }
+
+    /** 尝试占用一次 LLM 请求名额(有请求在飞或间隔太短则拒绝)。成功后必须调 {@link #finishLlm()}。 */
+    public boolean tryStartLlm() {
+        long now = System.currentTimeMillis();
+        if (llmBusy || now - lastLlmMillis < FrendConfig.get().llmMinIntervalSeconds * 1000L) return false;
+        llmBusy = true;
+        lastLlmMillis = now;
+        return true;
+    }
+
+    public void finishLlm() {
+        llmBusy = false;
     }
 
     // ===================== NBT 持久化 =====================
