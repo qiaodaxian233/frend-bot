@@ -72,3 +72,12 @@ description: >
 - **行为红线**:模型输出只当聊天文本广播,永远不解析成游戏操作。指令关键词在 `handleCommand` 里前置短路,轮不到 LLM。
 - **防刷屏三件套**:单飞标志(llmBusy)+ 最短间隔(llmMinIntervalSeconds)+ 失败退模板。改聊天逻辑时三件都不能丢。
 - **响应要清洗**:本地小模型可能吐 `<think>...</think>`、多行、整段引号——`FrendLlmClient.sanitize` 统一处理,新增后端也走它。
+
+## 干活任务(m3 加入)踩坑备忘
+
+- **关键词 contains 顺序又埋过一次雷**:"回家存箱子"含"回家",`KEY_DEPOSIT` 必须排在 `KEY_HOME` 前判定(与 FOLLOW-before-COME 同款)。往关键词表里加词前,先想想会不会被前面的截胡。
+- **加 Mode 枚举值 = 全仓搜 switch**:`Mode` 加了 WORK,`FrendChatHandler` 里两个 switch 不补分支直接编译失败(Java 枚举 switch 要穷尽)。
+- **ItemStack#damage 不要碰**:1.21 各小版本签名一直变(Entity/EquipmentSlot/ServerWorld+Consumer 好几套)。手动 `setDamage(getDamage()+1)` + 自己判断报废,稳。
+- **破坏方块要"慢慢挖"**:`setBlockBreakingInfo(entityId, pos, 0..9)` 播进度、`-1` 清除;真正破坏用 `breakBlock(pos, true, entity)` 让掉落物照常掉。瞬爆 = 一眼假。
+- **任务不落盘**:任务对象全是瞬时状态,readNbt 里 WORK 一律退 STAY——别试图序列化任务,收益低坑多。
+- **搜方块用 BlockPos.iterate 一次性搜,结果缓存**:半径 16 是 33³≈3.6 万格,每次搜完缓存目标,挖完/失效再搜;千万别每 tick 全量扫。

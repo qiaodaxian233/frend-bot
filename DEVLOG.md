@@ -41,3 +41,21 @@
 **【待编译验证】新增**:`World#getTimeOfDay()`(persona 里判断昼夜)、`ServerWorld#getServer()`(切回主线程用,标准 API 风险低)。
 
 **未在沙箱编译**,同里程碑 1,待作者本地 build 回传。
+
+---
+
+## 里程碑 3 — v0.2 能干活:砍树 / 挖石 / 挖煤铁 / 回家存箱子 / 工具耐久 / 自动吃
+
+架构:新增 `entity/task/` 任务框架(不落盘的瞬时状态机,mobTick 驱动)。任务只在新增的 **Mode.WORK** 下运行;主人一句"跟我来"切走模式即自然打断;存档重载后 WORK 退回 STAY。
+
+- `FrendTask` 基类:`moveNear`(够不着先走过去 + 卡死计时)、`breakTick`("慢慢挖":朝方块看 + 周期挥手 + 破坏进度动画 + 按耗时破坏,不瞬爆——像人不像指令方块)。
+- `ChopTreeTask`:搜最近原木 → 3×3×3 邻域 BFS 收整棵树(兼容斜枝,上限 48 块)→ 低→高逐块砍。**决策:够得着树根就整棵处理、高枝隔空砍,不真爬树**——不卡寻路、不留悬空半棵树,v0.2 的取舍。斧头可选(快一倍 + 耗耐久),没斧头徒手翻倍耗时。
+- `MineTask`(STONE/ORE 双模):**必须有镐**,没镐开口要;只挖露头方块(至少一面挨空气),不挖自己脚下(不自埋)。ORE 走 `BlockTags.COAL_ORES/IRON_ORES`(深板岩变种免费兼容)。**不做避岩浆/火把,设计文档排在 v0.5。**
+- `DepositTask`:走回家 → 家 ±4 格找箱子/陷阱箱/木桶 → 倒货。**工具(斧镐剑铲)和食物自己留着**——存完货不能变成手无寸铁饿肚子的憨憨。装不下如实汇报。
+- 工具耐久:`findUsableTool`(剩余 ≤ toolReserveDurability 就不用,给主人留口气修)、`damageTool`(**不走 ItemStack#damage——1.21 签名多变风险高,手动 setDamage**,磨没了移除并喊一声)。
+- 自动进食:血 < 阈值且背包有食物(FOOD 数据组件)就吃,回血量 = 食物饱食度;被动回血降级为无粮保底。
+- 捡拾:**只在任务中**捡 2.5 格内落地物(不抢主人东西),掉落物 → 背包。
+- 入口:`/frend work chop|stone|ore|deposit|stop` + 聊天关键词(砍树/挖石头/挖矿/存箱子/收工)。**"回家存箱子"含"回家",DEPOSIT 判定必须排在 HOME 前**(与 FOLLOW-before-COME 同款坑,SKILL 有记)。
+- 每次任务上限 maxBlocksPerJob=32 块,到数收工汇报——防一句"挖矿"挖穿地图。
+
+**【待编译验证】新增**:`World#setBlockBreakingInfo`(破坏进度动画)、`DataComponentTypes.FOOD`/`FoodComponent#nutrition()`、`ItemStack.areItemsAndComponentsEqual`、`SoundEvents.ENTITY_GENERIC_EAT` 是否 RegistryEntry(代码里带 `.value()`,报错就去掉)、`ItemTags.AXES/PICKAXES/SWORDS/SHOVELS`。两个模式 switch 已补 WORK 分支(否则 switch 不穷尽直接编译失败)。

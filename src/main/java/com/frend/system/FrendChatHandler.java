@@ -32,13 +32,18 @@ public final class FrendChatHandler {
 
     private static final Random RANDOM = new Random();
 
-    // ===== 指令关键词(永远走规则;顺序敏感:FOLLOW 要在 COME 前) =====
+    // ===== 指令关键词(永远走规则;顺序敏感:FOLLOW 要在 COME 前,存箱子要在回家前) =====
     private static final String[] KEY_FOLLOW = {"跟我来", "跟着我", "跟上", "跟我走", "follow"};
     private static final String[] KEY_STAY   = {"停下", "待在这", "待着", "别动", "原地", "stay", "stop"};
     private static final String[] KEY_COME   = {"过来", "来我这", "come"};
     private static final String[] KEY_HOME   = {"回家", "go home"};
     private static final String[] KEY_STATUS = {"报告", "状态", "怎么样", "status"};
     private static final String[] KEY_NAME   = {"frend", "朋友"};
+    private static final String[] KEY_CHOP    = {"砍树", "砍点木头", "砍木头", "chop"};
+    private static final String[] KEY_STONE   = {"挖石头", "挖点石头", "挖石"};
+    private static final String[] KEY_ORE     = {"挖矿", "挖煤", "挖铁", "mine"};
+    private static final String[] KEY_DEPOSIT = {"存箱子", "回家存", "存东西", "去存", "deposit"};
+    private static final String[] KEY_WORKSTOP = {"收工", "别干了", "别挖了", "别砍了", "休息吧"};
 
     // ===== 闲聊关键词(规则模式的回话;LLM 模式下作为失败兜底) =====
     private static final String[] KEY_GREET  = {"你好", "在吗", "嗨", "hello", "hi"};
@@ -109,7 +114,18 @@ public final class FrendChatHandler {
 
     /** 指令关键词。命中返回 true(已处理)。 */
     private static boolean handleCommand(FrendEntity frend, ServerPlayerEntity sender, String text) {
-        if (matches(text, KEY_FOLLOW)) {
+        // 干活类先判:"回家存箱子"含"回家",存箱子必须抢在 HOME 前
+        if (matches(text, KEY_DEPOSIT)) {
+            frend.startTask(new com.frend.entity.task.DepositTask(frend), "好,我回家把东西存箱子里。");
+        } else if (matches(text, KEY_CHOP)) {
+            frend.startTask(new com.frend.entity.task.ChopTreeTask(frend), "收到,砍树去!");
+        } else if (matches(text, KEY_STONE)) {
+            frend.startTask(new com.frend.entity.task.MineTask(frend, com.frend.entity.task.MineTask.Kind.STONE), "好,我去凿点石头。");
+        } else if (matches(text, KEY_ORE)) {
+            frend.startTask(new com.frend.entity.task.MineTask(frend, com.frend.entity.task.MineTask.Kind.ORE), "找煤铁去,有露头的都归咱。");
+        } else if (matches(text, KEY_WORKSTOP) && frend.isWorking()) {
+            frend.stopTask("收工!");
+        } else if (matches(text, KEY_FOLLOW)) {
             frend.setMode(FrendEntity.Mode.FOLLOW);
             frend.sayDelayed(pick(R_FOLLOW));
         } else if (matches(text, KEY_STAY)) {
@@ -181,6 +197,7 @@ public final class FrendChatHandler {
             case FOLLOW -> "跟着主人走";
             case STAY -> "原地待命";
             case GO_HOME -> "赶路回家";
+            case WORK -> "干活中(" + (frend.currentTaskName() != null ? frend.currentTaskName() : "收尾") + ")";
         };
         return "你是 Minecraft 世界里的陪伴 NPC,名字叫 frend,主人是玩家 " + owner.getName().getString()
                 + ",你们正一起冒险。用中文口语聊天,像熟悉的老朋友:自然、简短,一句话说完,最多 "
@@ -199,6 +216,7 @@ public final class FrendChatHandler {
             case FOLLOW -> "跟随中";
             case STAY -> "原地待命";
             case GO_HOME -> "正在回家";
+            case WORK -> "干活中(" + (frend.currentTaskName() != null ? frend.currentTaskName() : "收尾") + ")";
         };
         String home = frend.hasHome()
                 ? frend.getHomeDimension() + " " + frend.getHomePos().getX() + " "

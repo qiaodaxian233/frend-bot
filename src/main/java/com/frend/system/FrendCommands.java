@@ -59,6 +59,19 @@ public final class FrendCommands {
 
                         .then(CommandManager.literal("status").executes(FrendCommands::status))
 
+                        .then(CommandManager.literal("work")
+                                .then(CommandManager.literal("chop").executes(ctx -> forEachOwned(ctx, f ->
+                                        f.startTask(new com.frend.entity.task.ChopTreeTask(f), "收到,砍树去!"))))
+                                .then(CommandManager.literal("stone").executes(ctx -> forEachOwned(ctx, f ->
+                                        f.startTask(new com.frend.entity.task.MineTask(f, com.frend.entity.task.MineTask.Kind.STONE), "好,我去凿点石头。"))))
+                                .then(CommandManager.literal("ore").executes(ctx -> forEachOwned(ctx, f ->
+                                        f.startTask(new com.frend.entity.task.MineTask(f, com.frend.entity.task.MineTask.Kind.ORE), "找煤铁去,有露头的都归咱。"))))
+                                .then(CommandManager.literal("deposit").executes(ctx -> forEachOwned(ctx, f ->
+                                        f.startTask(new com.frend.entity.task.DepositTask(f), "好,我回家把东西存箱子里。"))))
+                                .then(CommandManager.literal("stop").executes(ctx -> forEachOwned(ctx, f ->
+                                        f.stopTask("收工!"))))
+                        )
+
                         .then(CommandManager.literal("dismiss").executes(FrendCommands::dismiss))
         ));
     }

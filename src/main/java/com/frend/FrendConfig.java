@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 2;
+    public static final int CURRENT_CONFIG_VERSION = 3;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -80,6 +80,27 @@ public class FrendConfig {
     public String llmPersonaExtra = "";
     /** 对话延续窗口(秒):frend 刚说完话,这段时间内主人说话不用喊名字也算在跟它聊。 */
     public int conversationWindowSeconds = 15;
+
+    // ============ 干活(v0.2) ============
+    /** 找树/矿/箱子的搜索半径(格)。 */
+    public double workSearchRadius = 16.0;
+    /** 干活时"够得着"的距离(格),够不着先走过去。 */
+    public double workReach = 4.5;
+    /** 一次任务最多处理的方块数,到数收工汇报(防止一句"挖矿"挖穿地图)。 */
+    public int maxBlocksPerJob = 32;
+    /** 有对应工具时砍一块原木耗时(tick);没斧头翻倍。 */
+    public int chopTicksPerBlock = 25;
+    /** 有镐时挖一块石/矿耗时(tick);挖掘必须有镐。 */
+    public int mineTicksPerBlock = 35;
+    /** 工具剩余耐久 ≤ 该值就不再使用(给主人留口气修/换)。 */
+    public int toolReserveDurability = 8;
+
+    // ============ 自动进食(v0.2) ============
+    /** 血量低于该值且背包里有吃的就自己吃(不再依赖被动回血)。 */
+    public boolean autoEat = true;
+    public double autoEatBelowHealth = 14.0;
+    /** 两口饭之间的最短间隔(秒)。 */
+    public int eatCooldownSeconds = 8;
 
     // ============ 照顾主人 ============
     /** 主人血量低时提醒。 */

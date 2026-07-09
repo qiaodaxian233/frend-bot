@@ -40,16 +40,23 @@ import java.util.UUID;
  *       并按聊天半径广播,不刷屏(全部带冷却)</li>
  * </ul>
  *
- * <p>刻意不做的:不打怪(v0.3)、不捡物(v0.2)、不自然生成(只能 /frend summon)。
- * 模式只存服务端 + NBT,客户端渲染不依赖它,所以不需要 DataTracker。
+ * <p>v0.2 新增:干活任务(砍树/挖石/挖煤铁/回家存箱子,见 entity/task/)、干活时捡拾掉落物、
+ * 工具耐久判断(留口气不用报废)、自动进食(食物饱食度换算回血)。
+ *
+ * <p>刻意不做的:不打怪(v0.3)、平时不捡物(只在干活时捡,不抢主人东西)、不自然生成(只能 /frend summon)。
+ * 模式只存服务端 + NBT,客户端渲染不依赖它,所以不需要 DataTracker。任务对象不落盘,重载后 WORK 退回 STAY。
  */
 public class FrendEntity extends PathAwareEntity {
 
-    /** 行为模式。 */
-    public enum Mode { FOLLOW, STAY, GO_HOME }
+    /** 行为模式。WORK = 正在执行任务(任务本身不落盘,重载后退回 STAY)。 */
+    public enum Mode { FOLLOW, STAY, GO_HOME, WORK }
 
     private Mode mode = Mode.FOLLOW;
     private UUID ownerUuid = null;
+
+    /** 当前任务(仅 WORK 模式;不落盘)。 */
+    private com.frend.entity.task.FrendTask currentTask = null;
+    private int eatCooldown = 0;
 
     /** 27 格随身背包。 */
     private final SimpleInventory inventory = new SimpleInventory(27);
@@ -150,6 +157,60 @@ public class FrendEntity extends PathAwareEntity {
 
     public SimpleInventory getInventory() { return inventory; }
 
+    // ===================== 任务(v0.2 干活) =====================
+
+    /** 开始一个任务(自动切 WORK 模式,顶掉旧任务)。 */
+    public void startTask(com.frend.entity.task.FrendTask task, String announce) {
+        if (currentTask != null) currentTask.onStop();
+        currentTask = task;
+        setMode(Mode.WORK);
+        if (announce != null) sayDelayed(announce);
+    }
+
+    /** 收工(announce 可空 = 不说话)。 */
+    public void stopTask(String announce) {
+        if (currentTask != null) {
+            currentTask.onStop();
+            currentTask = null;
+        }
+        if (mode == Mode.WORK) setMode(Mode.STAY);
+        if (announce != null) sayDelayed(announce);
+    }
+
+    public boolean isWorking() { return currentTask != null; }
+
+    public String currentTaskName() { return currentTask != null ? currentTask.name() : null; }
+
+    /** 找一把还能用的工具(耐久留量走配置);没有返回 EMPTY。 */
+    public ItemStack findUsableTool(net.minecraft.registry.tag.TagKey<net.minecraft.item.Item> tag) {
+        int reserve = FrendConfig.get().toolReserveDurability;
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack s = inventory.getStack(i);
+            if (s.isEmpty() || !s.isIn(tag)) continue;
+            if (s.isDamageable() && s.getMaxDamage() - s.getDamage() <= reserve) continue; // 留口气
+            return s;
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /**
+     * 工具磨一点耐久。不走 ItemStack#damage(1.21 签名多变,风险高),
+     * 手动 setDamage;真磨没了从背包移除并喊一声。
+     */
+    public void damageTool(ItemStack tool) {
+        if (tool.isEmpty() || !tool.isDamageable()) return;
+        tool.setDamage(tool.getDamage() + 1);
+        if (tool.getDamage() >= tool.getMaxDamage()) {
+            for (int i = 0; i < inventory.size(); i++) {
+                if (inventory.getStack(i) == tool) {
+                    inventory.setStack(i, ItemStack.EMPTY);
+                    break;
+                }
+            }
+            sayDelayed("啊,工具报废了……回头给我补一把?");
+        }
+    }
+
     // ===================== 交互 =====================
 
     @Override
@@ -173,6 +234,25 @@ public class FrendEntity extends PathAwareEntity {
         return owner != null ? owner.getName().getString() : "我的主人";
     }
 
+    /**
+     * 从背包里找一份食物吃掉:回血量 = 食物饱食度(实体没有饥饿系统,用这个当口粮换算)。
+     * 【待编译验证】1.21 数据组件:DataComponentTypes.FOOD / FoodComponent#nutrition()。
+     */
+    private boolean tryEat() {
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack s = inventory.getStack(i);
+            if (s.isEmpty()) continue;
+            net.minecraft.component.type.FoodComponent food = s.get(net.minecraft.component.DataComponentTypes.FOOD);
+            if (food == null) continue;
+            s.decrement(1);
+            this.heal(Math.max(1.0f, food.nutrition()));
+            this.playSound(net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EAT.value(), 1.0f, 1.0f); // 【待编译验证】RegistryEntry 还是 SoundEvent,报错就去 .value()
+            if (this.random.nextFloat() < 0.3f) sayDelayed("先垫两口,不耽误事。");
+            return true;
+        }
+        return false;
+    }
+
     // ===================== tick(仅服务端) =====================
 
     @Override
@@ -183,8 +263,37 @@ public class FrendEntity extends PathAwareEntity {
         if (lowHealthWarnCooldown > 0) lowHealthWarnCooldown--;
         if (ambientCooldown > 0) ambientCooldown--;
         if (hurtTalkCooldown > 0) hurtTalkCooldown--;
+        if (eatCooldown > 0) eatCooldown--;
 
-        // 被动缓慢回血(v0.2 学会吃东西前的保底)
+        // ===== 任务驱动(WORK 模式) =====
+        if (currentTask != null) {
+            if (mode != Mode.WORK) {
+                // 被"跟我来"等切走模式 → 任务自然作废
+                currentTask.onStop();
+                currentTask = null;
+            } else if (!currentTask.tick()) {
+                currentTask = null;
+                setMode(Mode.STAY);
+            }
+        }
+
+        // 干活时顺手捡脚边掉落物(只在任务中捡,平时不跟主人抢地上的东西)
+        if (currentTask != null && this.age % 10 == 0) {
+            for (net.minecraft.entity.ItemEntity item : this.getWorld().getEntitiesByClass(
+                    net.minecraft.entity.ItemEntity.class, this.getBoundingBox().expand(2.5),
+                    e -> e.isAlive() && e.isOnGround())) {
+                ItemStack rest = inventory.addStack(item.getStack());
+                if (rest.isEmpty()) item.discard();
+                else item.setStack(rest);
+            }
+        }
+
+        // ===== 自动进食:背包里有吃的、血不满就自己吃(优先于被动回血) =====
+        if (c.autoEat && eatCooldown <= 0 && this.getHealth() < (float) c.autoEatBelowHealth) {
+            if (tryEat()) eatCooldown = c.eatCooldownSeconds * 20;
+        }
+
+        // 被动缓慢回血(没吃的时的保底)
         if (c.passiveRegen && this.age % Math.max(1, c.regenIntervalTicks) == 0
                 && this.getHealth() < this.getMaxHealth()) {
             this.heal((float) c.regenAmount);
@@ -332,6 +441,7 @@ public class FrendEntity extends PathAwareEntity {
         } catch (IllegalArgumentException e) {
             mode = Mode.FOLLOW;
         }
+        if (mode == Mode.WORK) mode = Mode.STAY; // 任务不落盘,重载后回待命
         if (nbt.contains("HomeDim")) {
             homePos = new BlockPos(nbt.getInt("HomeX"), nbt.getInt("HomeY"), nbt.getInt("HomeZ"));
             homeDimension = nbt.getString("HomeDim");
