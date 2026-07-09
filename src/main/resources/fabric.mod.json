@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "frend",
+  "version": "${version}",
+  "name": "frend",
+  "description": "本地运行的 Minecraft 陪伴机器人：像朋友一样陪你生存、聊天、干活。v0.1：召唤/跟随/停留/过来/回家 + 规则聊天 + 类玩家模型 + 基础背包。Fabric 1.21.1。",
+  "authors": ["qiaodaxian233"],
+  "contact": {
+    "homepage": "https://github.com/qiaodaxian233/frend-bot",
+    "sources": "https://github.com/qiaodaxian233/frend-bot"
+  },
+  "license": "ARR",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.frend.Frend"],
+    "client": ["com.frend.client.FrendClient"]
+  },
+  "mixins": [
+    "frend.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

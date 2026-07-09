@@ -1,0 +1,64 @@
+# frend
+
+本地运行的 Minecraft 陪伴机器人 · **Fabric 1.21.1**
+
+> 不是"命令机器",而是像朋友一样陪你生存、聊天、干活、打怪、探险、通关的本地 AI 朋友。完全离线,不依赖网络。
+
+完整设计蓝图见 [`docs/DESIGN.md`](docs/DESIGN.md)。本仓库当前进度:**v0.1(里程碑 1)已落地** —— 能出生、能跟随、能聊天。
+
+---
+
+## 一、当前已实现(v0.1)
+
+| 能力 | 说明 | 关键文件 |
+|---|---|---|
+| 类玩家 NPC | 玩家体型 + 玩家模型 + Steve 皮肤渲染;主人绑定,不会自然消失 | `entity/FrendEntity`、`client/render/FrendRenderer` |
+| 三种模式 | 跟随(小跑、不贴脸)/ 停留 / 回家(到家自动转停留、走不过去会说明) | `entity/FrendFollowOwnerGoal`、`entity/FrendGoHomeGoal` |
+| 规则层聊天 | 公屏说"跟我来 / 停下 / 过来 / 回家 / 报告状态"等关键词直接指挥;回话带随机延迟不秒回;没听懂且没喊名字就保持沉默不刷屏 | `system/FrendChatHandler` |
+| "像人"细节 | 主人低血提醒(带冷却)、偶尔闲聊、受伤会喊、死前留遗言、跑丢才兜底传送并交代一句 | `entity/FrendEntity`、`system/FrendScheduler` |
+| 基础背包 | 27 格,主人右键打开(原版箱子界面);死亡/解散全部掉落;NBT 持久化 | `entity/FrendEntity` |
+| 家系统 | `/frend home set` 定家(记维度);"回家"走寻路,跨维度会说走不过去 | `entity/FrendEntity` |
+
+## 二、指令
+
+不需要 OP,人人可用(只作用于**自己的** frend):
+
+```
+/frend summon      召唤(默认每人 1 个,可配)
+/frend follow      跟随
+/frend stay        停留
+/frend come        过来
+/frend home set    把家定在你脚下
+/frend home go     让它回家
+/frend status      汇报状态
+/frend dismiss     解散(先掉落背包)
+```
+
+聊天关键词(附近 16 格内说话即可,无需指令):跟我来 / 停下 / 过来 / 回家 / 报告 / 你好 / 谢谢……
+
+## 三、构建
+
+需要 **JDK 21**。
+
+```bash
+./gradlew build
+```
+
+产物在 `build/libs/frend-0.1.0.jar`,连同 Fabric API、Fabric Loader 丢进 `mods/` 即可。
+
+> ⚠️ 本工程在沙箱内编写,沙箱网络未放行 Fabric/Mojang Maven 源,**未能在沙箱实际跑通 `./gradlew build`**。代码按 1.21.1 + Fabric API 编写并尽量照抄 yongye 仓库已编译验证过的同款 API;个别无先例的写法(玩家模型渲染器、聊天事件)已在代码注释标注「待编译验证」,报错回传即修。
+
+## 四、配置
+
+首次运行生成 `config/frend.json`,可调项:每人 frend 上限、跟随距离/速度/跑丢传送开关、聊天半径与回话延迟、闲聊开关与冷却、低血提醒阈值、被动回血等。
+
+## 五、路线图(见 docs/DESIGN.md)
+
+- **v0.2 能干活**:砍树、挖矿、回家存箱子、自动吃食物
+- **v0.3 能战斗**:打怪、盾防、低血撤退、支援主人
+- **v0.4 本地 LLM**:Ollama/llama.cpp 桥接,自然语言 → 白名单技能 DSL(LLM 永不直接控制游戏)
+- **v0.5 矿洞与下界** → **v1.0 完整陪伴生存** → **v2.0 末影龙与速通**
+
+## 六、边界
+
+frend 不是外挂,不是刷材料机器。单机和自建服务器里可以做得很强;**不做**在公开服务器上隐藏机器人身份或绕过反作弊的功能。
