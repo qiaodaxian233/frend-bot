@@ -28,9 +28,11 @@
 
 - frend = **本地运行的 Minecraft 陪伴机器人**:类玩家 NPC,像朋友一样陪玩家生存/聊天/干活/打怪,完全离线。蓝图见 `docs/DESIGN.md`,一句话产品定义:*不是外挂,不是刷材料机器,而是会记住你、陪你冒险的本地 AI 朋友*。
 - 核心架构原则(v0.4 起生效,现在就要守):**LLM 永不直接控制游戏**,只产出意图,执行走白名单技能 DSL。
-- 当前进度:**里程碑 7 / v0.6(矿下安全)已落地,全部未经本地编译验证**。
+- 当前进度:**里程碑 8 / v0.7(装备与外观)已落地,全部未经本地编译验证**。
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
+
+m8(v0.7 装备与外观):autoEquipArmorAndShield(盾→空副手就拿;甲→空槽就穿/比 getProtection 更硬才换/换下回包/包满落地;道谢 60s 冷却;age%40==20 与武器扫描错开)+渲染挂 ArmorFeatureRenderer 四参构造(ArmorEntityModel+PLAYER_INNER/OUTER_ARMOR,照抄原版 PlayerEntityRenderer,渲染仍是全仓最高风险区)+一件不昧(构造器 setEquipmentDropChance 六槽 2.0f 死亡必掉不折耐久+dropAllItems 追加剥装备=解散归还)+持久化白嫖 HandItems/ArmorItems 原版 NBT;config v5→v6 autoEquipArmor;新增待编译验证:getSlotType/getProtection/setEquipmentDropChance/dropStack/ArmorFeatureRenderer 构造;仍未沙箱编译。 · 上一里程碑
 
 m7(v0.6 矿下安全):三层防护——寻路层 setPathfindingPenalty(LAVA/DAMAGE_FIRE=-1 禁区,DANGER_FIRE=16,一处设置全局生效)+挖掘层 MineTask#safeToMine(六邻岩浆不挖/头顶两格 FallingBlock 不挖,选块过滤+开挖前复查,一次任务解释一次)+照明层 tryPlaceTorch(方块光<7 且天空光<7 双条件防白天误判+canPlaceAt+2s 硬冷却+光照自然拉间距+念叨 5min 一次+没火把 30s 退避不抱怨);config v4→v5 新增 autoTorch/torchLightThreshold/mineSafetyEnabled;新增待编译验证:PathNodeType 枚举/getLightLevel(LightType,pos)/canPlaceAt/getFluidState+FluidTags.LAVA/FallingBlock;仍未沙箱编译。 · 上一里程碑
 

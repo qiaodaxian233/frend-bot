@@ -178,3 +178,24 @@
 **配置 v4 → v5**:`autoTorch=true` / `torchLightThreshold=7` / `mineSafetyEnabled=true`。
 
 **【待编译验证】新增**:`PathNodeType.LAVA/DAMAGE_FIRE/DANGER_FIRE` 枚举名、`World#getLightLevel(LightType, BlockPos)`、`BlockState#canPlaceAt`、`World#getFluidState` + `FluidTags.LAVA`、`FallingBlock` instanceof——全是原版稳定 API,风险低但签名细节需过一遍编译。
+
+---
+
+## 里程碑 8 / v0.7 — 装备与外观:穿上盔甲像个正经冒险家
+
+**目标**:视觉与生存双升级——扔进背包的盔甲和盾牌它自己穿戴,而且**看得见**。
+
+**自动穿戴**(`FrendEntity#autoEquipArmorAndShield`,每 40 tick 与武器扫描错开 20 tick):
+- 盾 → 副手空着就拿(盾无优劣不换);
+- 甲 → 槽位空着就穿;已穿则比 `ArmorItem#getProtection()` 护甲值,新的更硬才换,换下的放回背包(包满落地兜底);
+- 穿上任何东西道个谢,60s 冷却。配置 `autoEquipArmor`(v6,默认开)。
+
+**装备渲染**(`FrendRenderer`):BipedEntityRenderer 只自带头部/手持物/鞘翅 feature,盔甲层要自己挂——照抄原版 PlayerEntityRenderer:`ArmorFeatureRenderer` 四参构造(含 BakedModelManager,1.20.2+ 盔甲纹饰用)+ `ArmorEntityModel` + `PLAYER_INNER/OUTER_ARMOR` 模型层。
+
+**一件不昧**(装备都是主人给的):
+- 死亡:构造器里六个经典槽位 `setEquipmentDropChance(slot, 2.0f)`——必掉且不折耐久(刻意不碰 1.20.5+ 新增 BODY 槽,frend 用不上);
+- 解散:`dropAllItems` 追加剥装备落地。
+
+**持久化白嫖**:HandItems/ArmorItems 是 MobEntity 原版 NBT,equipStack 上去的装备自动随存档走,零新代码。
+
+**【待编译验证】新增**:`ArmorItem#getSlotType()`(备选 `getType().getEquipmentSlot()`)、`ArmorItem#getProtection()`、`MobEntity#setEquipmentDropChance`、`Entity#dropStack`、渲染侧 `ArmorFeatureRenderer` 四参构造 + `ArmorEntityModel` + `PLAYER_INNER/OUTER_ARMOR`。渲染仍是全仓风险最高区(无 yongye 先例),报错优先核对 FrendRenderer 注释里列的点。

@@ -5,6 +5,8 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.render.entity.BipedEntityRenderer;
 import net.minecraft.client.render.entity.EntityRendererFactory;
+import net.minecraft.client.render.entity.feature.ArmorFeatureRenderer;
+import net.minecraft.client.render.entity.model.ArmorEntityModel;
 import net.minecraft.client.render.entity.model.EntityModelLayers;
 import net.minecraft.client.render.entity.model.PlayerEntityModel;
 import net.minecraft.util.Identifier;
@@ -28,6 +30,15 @@ public class FrendRenderer extends BipedEntityRenderer<FrendEntity, PlayerEntity
 
     public FrendRenderer(EntityRendererFactory.Context ctx) {
         super(ctx, new PlayerEntityModel<>(ctx.getPart(EntityModelLayers.PLAYER), false), 0.5f);
+        // ===== v0.7 盔甲渲染:BipedEntityRenderer 只带头部/手持物/鞘翅 feature,盔甲要自己挂 =====
+        // 照抄原版 PlayerEntityRenderer 的挂法。【待编译验证】ArmorFeatureRenderer 四参构造
+        // (context, innerModel, outerModel, BakedModelManager——1.20.2+ 盔甲纹饰需要)与
+        // ArmorEntityModel + PLAYER_INNER/OUTER_ARMOR 模型层。手持物由父类自带,若不显示再显式挂
+        // HeldItemFeatureRenderer。
+        this.addFeature(new ArmorFeatureRenderer<>(this,
+                new ArmorEntityModel<>(ctx.getPart(EntityModelLayers.PLAYER_INNER_ARMOR)),
+                new ArmorEntityModel<>(ctx.getPart(EntityModelLayers.PLAYER_OUTER_ARMOR)),
+                ctx.getModelManager()));
     }
 
     @Override

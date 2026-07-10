@@ -3,6 +3,7 @@ package com.frend.entity;
 import com.frend.FrendConfig;
 import com.frend.system.FrendScheduler;
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.ai.goal.LookAroundGoal;
 import net.minecraft.entity.ai.goal.LookAtEntityGoal;
 import net.minecraft.entity.ai.goal.SwimGoal;
@@ -13,6 +14,7 @@ import net.minecraft.entity.mob.PathAwareEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.inventory.Inventories;
 import net.minecraft.inventory.SimpleInventory;
+import net.minecraft.item.ArmorItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.screen.GenericContainerScreenHandler;
@@ -74,6 +76,9 @@ public class FrendEntity extends PathAwareEntity {
     private int torchCooldown = 0;
     private int torchTalkCooldown = 0;
 
+    /** v0.7 穿装备道谢的独立冷却。 */
+    private int equipTalkCooldown = 0;
+
     // ===== 聊天记忆(不落盘):LLM 上下文 + "对话延续窗口" + 请求节流 =====
     private final java.util.ArrayDeque<String[]> chatHistory = new java.util.ArrayDeque<>();
     private long lastTalkMillis = 0;          // frend 上次开口时间
@@ -113,6 +118,12 @@ public class FrendEntity extends PathAwareEntity {
         this.setPathfindingPenalty(net.minecraft.entity.ai.pathing.PathNodeType.LAVA, -1.0f);
         this.setPathfindingPenalty(net.minecraft.entity.ai.pathing.PathNodeType.DAMAGE_FIRE, -1.0f);
         this.setPathfindingPenalty(net.minecraft.entity.ai.pathing.PathNodeType.DANGER_FIRE, 16.0f);
+        // ===== v0.7 装备必掉:身上穿的拿的都是主人给的,死了一件不昧(>1 = 必掉且不折耐久) =====
+        // 【待编译验证】MobEntity#setEquipmentDropChance;只设六个经典槽位,不碰 1.20.5+ 新增的 BODY
+        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND,
+                EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            this.setEquipmentDropChance(slot, 2.0f);
+        }
     }
 
     /** 属性:数值走配置(配置在实体注册之前加载)。 */
@@ -274,6 +285,52 @@ public class FrendEntity extends PathAwareEntity {
         }
     }
 
+    /**
+     * v0.7 自动穿甲/拿盾:扫背包——
+     * 盾:副手空着就拿(不换,盾没有优劣);
+     * 甲:对应槽位空着就穿;已穿则比护甲值,新的更硬才换,换下来的放回背包。
+     * 穿上任何东西都道个谢(60 秒冷却,不刷屏)。
+     */
+    public void autoEquipArmorAndShield() {
+        boolean equippedSomething = false;
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack s = inventory.getStack(i);
+            if (s.isEmpty()) continue;
+
+            // 盾 → 副手
+            if (s.getItem() == net.minecraft.item.Items.SHIELD) {
+                if (this.getEquippedStack(EquipmentSlot.OFFHAND).isEmpty()) {
+                    this.equipStack(EquipmentSlot.OFFHAND, s.copy());
+                    inventory.setStack(i, ItemStack.EMPTY);
+                    equippedSomething = true;
+                }
+                continue;
+            }
+
+            if (!(s.getItem() instanceof ArmorItem armor)) continue;
+            // 【待编译验证】ArmorItem#getSlotType();若无此方法,备选 armor.getType().getEquipmentSlot()
+            EquipmentSlot slot = armor.getSlotType();
+            if (slot == EquipmentSlot.MAINHAND || slot == EquipmentSlot.OFFHAND) continue; // 保险
+            ItemStack current = this.getEquippedStack(slot);
+            // 【待编译验证】ArmorItem#getProtection()(护甲点数,钻甲胸=8 铁胸=6)
+            int newProt = armor.getProtection();
+            int curProt = current.getItem() instanceof ArmorItem cur ? cur.getProtection() : -1;
+            if (current.isEmpty() || newProt > curProt) {
+                this.equipStack(slot, s.copy());
+                inventory.setStack(i, ItemStack.EMPTY);
+                if (!current.isEmpty()) {
+                    ItemStack rest = inventory.addStack(current); // 换下来的放回包
+                    if (!rest.isEmpty()) this.dropStack(rest);    // 包满就落地(理论上不会:刚空出一格)
+                }
+                equippedSomething = true;
+            }
+        }
+        if (equippedSomething && equipTalkCooldown <= 0) {
+            equipTalkCooldown = 20 * 60;
+            sayDelayed("有装备当然要穿上——谢啦,感觉稳多了!");
+        }
+    }
+
     // ===================== 交互 =====================
 
     @Override
@@ -332,6 +389,7 @@ public class FrendEntity extends PathAwareEntity {
         if (eatCooldown > 0) eatCooldown--;
         if (torchCooldown > 0) torchCooldown--;
         if (torchTalkCooldown > 0) torchTalkCooldown--;
+        if (equipTalkCooldown > 0) equipTalkCooldown--;
 
         // ===== v0.6 自动插火把:在洞里(方块光和天空光都低)+ 背包有火把 → 脚下插一根 =====
         // 天空光条件挡住"白天野外方块光本来就是 0"的误判——地表 sky=15,永远不满足;只有洞里才插。
@@ -342,6 +400,11 @@ public class FrendEntity extends PathAwareEntity {
         // ===== 自动装备武器(v0.3):每 40 tick 扫一次背包,有剑/斧且主手空着就装上 =====
         if (c.combatEnabled && c.autoEquipWeapon && this.age % 40 == 0) {
             autoEquipBestWeapon();
+        }
+
+        // ===== v0.7 自动穿甲/拿盾:和武器错开 20 tick,摊薄扫包开销 =====
+        if (c.autoEquipArmor && this.age % 40 == 20) {
+            autoEquipArmorAndShield();
         }
 
         // ===== 任务驱动(WORK 模式) =====
@@ -443,6 +506,15 @@ public class FrendEntity extends PathAwareEntity {
         if (this.getWorld().isClient) return;
         ItemScatterer.spawn(this.getWorld(), this.getBlockPos(), this.inventory);
         for (int i = 0; i < inventory.size(); i++) inventory.setStack(i, ItemStack.EMPTY);
+        // v0.7:身上穿的拿的也一并还给主人(解散走这里;死亡由 setEquipmentDropChance 兜底)
+        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND,
+                EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            ItemStack s = this.getEquippedStack(slot);
+            if (!s.isEmpty()) {
+                this.dropStack(s.copy()); // 【待编译验证】Entity#dropStack(ItemStack)
+                this.equipStack(slot, ItemStack.EMPTY);
+            }
+        }
     }
 
     // ===================== 说话 =====================

@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 5;
+    public static final int CURRENT_CONFIG_VERSION = 6;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -141,6 +141,10 @@ public class FrendConfig {
     public int torchLightThreshold = 7;
     /** 挖掘避险:目标方块贴着岩浆、或头顶是沙/沙砾 → 跳过不挖。false = 艺高人胆大(不推荐)。 */
     public boolean mineSafetyEnabled = true;
+
+    // ===== v0.7 装备 =====
+    /** 自动穿甲/拿盾:背包里有更好的盔甲就穿上,副手空着有盾就拿上。 */
+    public boolean autoEquipArmor = true;
 
     public static FrendConfig get() {
         if (INSTANCE == null) load();
