@@ -54,6 +54,14 @@ public class FrendCombatGoal extends Goal {
     /** v0.4:当前目标是否来自"支援主人"注入——干掉它算一次救主。 */
     private boolean defendingOwner = false;
 
+    // ===== v0.8 弓箭远程 =====
+    /** 拉弓蓄力 tick(0 = 没在拉)。 */
+    private int bowDrawTicks = 0;
+    /** 换武器防抖冷却(滞回:远于 9 格换弓,近于 4 格换近战,20 tick 内不再换)。 */
+    private int swapCooldown = 0;
+    /** "没箭了"只喊一次,再摸到箭就复位。 */
+    private boolean saidNoArrows = false;
+
     public FrendCombatGoal(FrendEntity frend) {
         this.frend = frend;
         setControls(EnumSet.of(Control.MOVE, Control.LOOK));
@@ -131,6 +139,7 @@ public class FrendCombatGoal extends Goal {
         attackCooldown = 0;
         blockTicks = 0;
         defendingOwner = false;
+        bowDrawTicks = 0;
         // 举盾状态解除
         if (frend.isBlocking()) frend.clearActiveItem();
     }
@@ -139,6 +148,7 @@ public class FrendCombatGoal extends Goal {
     public void tick() {
         FrendConfig c = FrendConfig.get();
         if (attackCooldown > 0) attackCooldown--;
+        if (swapCooldown > 0) swapCooldown--;
 
         // ===== 低血撤退 =====
         if (frend.getHealth() <= (float) c.retreatBelowHealth) {
@@ -197,6 +207,25 @@ public class FrendCombatGoal extends Goal {
         } else if (dist < 1.5 && !hasRangedWeapon()) {
             // 太贴着了,退一步
             frend.getNavigation().stop();
+        }
+
+        // ===== v0.8 距离换武器(滞回防抖:远于 9 格且有弓有箭 → 弓;近于 4 格且有近战 → 剑斧) =====
+        if (c.rangedEnabled && swapCooldown <= 0) {
+            if (dist > 9.0 && !usingBow() && hasStack(s -> s.getItem() == Items.BOW) && !findArrow().isEmpty()) {
+                swapMainHand(s -> s.getItem() == Items.BOW);
+                frend.sayDelayed("有点远,吃我一箭!");
+            } else if (dist < 4.0 && usingBow()
+                    && hasStack(s -> s.isIn(net.minecraft.registry.tag.ItemTags.SWORDS)
+                                  || s.isIn(net.minecraft.registry.tag.ItemTags.AXES))) {
+                swapMainHand(s -> s.isIn(net.minecraft.registry.tag.ItemTags.SWORDS)
+                               || s.isIn(net.minecraft.registry.tag.ItemTags.AXES));
+            }
+        }
+
+        // ===== v0.8 远程攻击:手持弓 → 拉弓蓄力 → 满弓放箭 =====
+        if (c.rangedEnabled && usingBow()) {
+            rangedAttackTick(c, dist);
+            return;
         }
 
         // ===== 攻击 =====
@@ -274,6 +303,108 @@ public class FrendCombatGoal extends Goal {
         net.minecraft.item.ItemStack main = frend.getMainHandStack();
         if (main.getItem() instanceof SwordItem || main.getItem() instanceof AxeItem) return 16;
         return 20;
+    }
+
+    // ===================== v0.8 弓箭远程 =====================
+
+    private boolean usingBow() {
+        return frend.getMainHandStack().getItem() == Items.BOW;
+    }
+
+    /**
+     * 远程攻击一 tick:拉弓期间站桩瞄准(像玩家蓄力),拉满 20 tick 放箭,射后 30 tick 冷却。
+     * 没箭 → 喊一声换白刃;目标太远(> combatRange)→ 先收弓让移动逻辑贴近。
+     */
+    private void rangedAttackTick(FrendConfig c, double dist) {
+        net.minecraft.item.ItemStack arrowStack = findArrow();
+        if (arrowStack.isEmpty()) {
+            if (!saidNoArrows) {
+                saidNoArrows = true;
+                frend.sayDelayed("没箭了,上白刃!");
+            }
+            bowDrawTicks = 0;
+            frend.clearActiveItem();
+            swapMainHand(s -> s.isIn(net.minecraft.registry.tag.ItemTags.SWORDS)
+                           || s.isIn(net.minecraft.registry.tag.ItemTags.AXES));
+            return;
+        }
+        saidNoArrows = false;
+
+        if (attackCooldown > 0) return;                 // 两箭之间收弓歇口气
+        if (dist > c.combatRange || !frend.canSee(target)) { // 太远/看不见:不拉弓,让移动逻辑先贴近
+            bowDrawTicks = 0;
+            frend.clearActiveItem();
+            return;
+        }
+
+        if (bowDrawTicks == 0) {
+            if (frend.isBlocking()) frend.clearActiveItem(); // 弓盾不能同时用
+            frend.setCurrentHand(Hand.MAIN_HAND);            // 拉弓动作(客户端可见)
+        }
+        bowDrawTicks++;
+        frend.getNavigation().stop(); // 拉弓站桩,像玩家蓄满力再放
+
+        if (bowDrawTicks >= 20) {
+            shootArrow(arrowStack);
+            bowDrawTicks = 0;
+            attackCooldown = 30;
+            frend.clearActiveItem();
+        }
+    }
+
+    /**
+     * 放箭:弹道照抄原版骷髅 AbstractSkeletonEntity#shootAt(抛物线补偿 = 水平距离 × 0.2),
+     * 固定小散布(不按难度放水)。射一支耗一支。
+     */
+    private void shootArrow(net.minecraft.item.ItemStack arrowStack) {
+        // 【待编译验证】ProjectileUtil.createArrowProjectile 1.21.1 签名——四参(射手, 箭, 伤害系数, 所用武器);
+        // 若报错改三参(去掉最后的武器参数,1.20.x 老签名)。
+        net.minecraft.entity.projectile.PersistentProjectileEntity arrow =
+                net.minecraft.entity.projectile.ProjectileUtil.createArrowProjectile(
+                        frend, arrowStack.copyWithCount(1), 1.0f, frend.getMainHandStack());
+        double d = target.getX() - frend.getX();
+        double e = target.getBodyY(1.0 / 3.0) - arrow.getY();
+        double f = target.getZ() - frend.getZ();
+        double g = Math.sqrt(d * d + f * f);
+        arrow.setVelocity(d, e + g * 0.2, f, 1.6f, 6.0f);
+        frend.getWorld().spawnEntity(arrow);
+        // 【待编译验证】SoundEvents.ENTITY_ARROW_SHOOT 是否 RegistryEntry(报错就加 .value())
+        frend.playSound(net.minecraft.sound.SoundEvents.ENTITY_ARROW_SHOOT, 1.0f, 1.0f);
+        arrowStack.decrement(1); // 直接减背包里那组箭
+        // 已知欠账(先写完后修):箭是异步击杀,现有记忆埋点只认 tryAttack 白刃,射死的怪暂不进战绩。DEVLOG 有记。
+    }
+
+    /** 背包里找一组箭(ItemTags.ARROWS,普通/药水/光灵箭都算)。 */
+    private net.minecraft.item.ItemStack findArrow() {
+        var inv = frend.getInventory();
+        for (int i = 0; i < inv.size(); i++) {
+            net.minecraft.item.ItemStack s = inv.getStack(i);
+            if (!s.isEmpty() && s.isIn(net.minecraft.registry.tag.ItemTags.ARROWS)) return s;
+        }
+        return net.minecraft.item.ItemStack.EMPTY;
+    }
+
+    private boolean hasStack(java.util.function.Predicate<net.minecraft.item.ItemStack> want) {
+        var inv = frend.getInventory();
+        for (int i = 0; i < inv.size(); i++) {
+            net.minecraft.item.ItemStack s = inv.getStack(i);
+            if (!s.isEmpty() && want.test(s)) return true;
+        }
+        return false;
+    }
+
+    /** 主手和背包里第一件满足条件的东西对调(原主手物进那个包位,不丢东西)。 */
+    private void swapMainHand(java.util.function.Predicate<net.minecraft.item.ItemStack> want) {
+        var inv = frend.getInventory();
+        for (int i = 0; i < inv.size(); i++) {
+            net.minecraft.item.ItemStack s = inv.getStack(i);
+            if (s.isEmpty() || !want.test(s)) continue;
+            net.minecraft.item.ItemStack old = frend.getMainHandStack();
+            frend.setStackInHand(Hand.MAIN_HAND, s.copy());
+            inv.setStack(i, old.isEmpty() ? net.minecraft.item.ItemStack.EMPTY : old.copy());
+            swapCooldown = 20;
+            return;
+        }
     }
 
     // ===== 战斗喊话 =====

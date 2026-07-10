@@ -28,9 +28,11 @@
 
 - frend = **本地运行的 Minecraft 陪伴机器人**:类玩家 NPC,像朋友一样陪玩家生存/聊天/干活/打怪,完全离线。蓝图见 `docs/DESIGN.md`,一句话产品定义:*不是外挂,不是刷材料机器,而是会记住你、陪你冒险的本地 AI 朋友*。
 - 核心架构原则(v0.4 起生效,现在就要守):**LLM 永不直接控制游戏**,只产出意图,执行走白名单技能 DSL。
-- 当前进度:**里程碑 8 / v0.7(装备与外观)已落地,全部未经本地编译验证**。
+- 当前进度:**里程碑 9 / v0.8(弓箭远程)已落地,全部未经本地编译验证**。
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
+
+m9(v0.8 弓箭远程):距离换武器(>9 格有弓有箭换弓/<4 格换近战,滞回 4~9 防抖+20tick 换械冷却,对调不覆盖)+射击循环(setCurrentHand 拉弓可见/站桩蓄力 20tick/骷髅同款弹道 水平距离×0.2 抛物补偿/散布 6 固定/射后冷却 30tick/耗 ItemTags.ARROWS)+没箭喊一次换白刃+超 combatRange 或看不见先收弓;顺手修 autoEquipBestWeapon 覆盖式吃装备历史隐患(三处改对调+弓入不乱换白名单);已知欠账:箭异步击杀不进战绩(pending 对账修法排后);config v6→v7 rangedEnabled;新增待编译验证:createArrowProjectile 四参/setVelocity 五参/getBodyY/ENTITY_ARROW_SHOOT/copyWithCount;仍未沙箱编译。 · 上一里程碑
 
 m8(v0.7 装备与外观):autoEquipArmorAndShield(盾→空副手就拿;甲→空槽就穿/比 getProtection 更硬才换/换下回包/包满落地;道谢 60s 冷却;age%40==20 与武器扫描错开)+渲染挂 ArmorFeatureRenderer 四参构造(ArmorEntityModel+PLAYER_INNER/OUTER_ARMOR,照抄原版 PlayerEntityRenderer,渲染仍是全仓最高风险区)+一件不昧(构造器 setEquipmentDropChance 六槽 2.0f 死亡必掉不折耐久+dropAllItems 追加剥装备=解散归还)+持久化白嫖 HandItems/ArmorItems 原版 NBT;config v5→v6 autoEquipArmor;新增待编译验证:getSlotType/getProtection/setEquipmentDropChance/dropStack/ArmorFeatureRenderer 构造;仍未沙箱编译。 · 上一里程碑
 

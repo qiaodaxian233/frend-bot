@@ -199,3 +199,21 @@
 **持久化白嫖**:HandItems/ArmorItems 是 MobEntity 原版 NBT,equipStack 上去的装备自动随存档走,零新代码。
 
 **【待编译验证】新增**:`ArmorItem#getSlotType()`(备选 `getType().getEquipmentSlot()`)、`ArmorItem#getProtection()`、`MobEntity#setEquipmentDropChance`、`Entity#dropStack`、渲染侧 `ArmorFeatureRenderer` 四参构造 + `ArmorEntityModel` + `PLAYER_INNER/OUTER_ARMOR`。渲染仍是全仓风险最高区(无 yongye 先例),报错优先核对 FrendRenderer 注释里列的点。
+
+---
+
+## 里程碑 9 / v0.8 — 弓箭远程:远了拉弓,近了拔剑
+
+**目标**:像真人一样按距离选武器。v0.3 埋的 `hasRangedWeapon()` 钩子(当时只影响保持距离)正式实装。
+
+**距离换武器**(带滞回防抖,20 tick 换械冷却):目标远于 9 格且包里有弓有箭 → 换弓("有点远,吃我一箭!");近于 4 格且包里有剑/斧 → 换回近战。滞回区间(4~9)不换,防止在临界距离抽风来回换。换械一律**对调**(原主手物进包位),不覆盖不吃装备。
+
+**射击循环**:拉弓(`setCurrentHand`,客户端可见拉弓动作)→ 站桩蓄力 20 tick(像玩家蓄满力)→ 放箭 → 收弓冷却 30 tick。弹道照抄原版骷髅 `AbstractSkeletonEntity#shootAt`:抛物线补偿 = 水平距离 × 0.2,固定小散布(不按难度放水)。射一支耗一支(ItemTags.ARROWS,药水箭光灵箭都能用)。目标超 combatRange 或看不见 → 先收弓让移动逻辑贴近;弓盾不同时用;拉弓被打断(stop)蓄力清零。
+
+**没箭了**:喊一声"没箭了,上白刃!"(一次,摸到箭复位),自动换回剑斧。
+
+**顺手修的自引入 bug**:`autoEquipBestWeapon` 原来是"覆盖式"装武器(主手原物直接消失)——v0.8 弓会被剑覆盖吃掉,连带修好历史隐患(主手火把/镐被覆盖同理)。三处全改对调,并把"主手是弓"加入不乱换白名单。
+
+**已知欠账(先写完后修,主人钦点)**:箭是异步击杀——现有记忆埋点只认 tryAttack 白刃收尾,射死的怪暂不进战绩/救主统计。修法预案:记 pending 箭靶,目标死时对账;排后。
+
+**【待编译验证】新增**:`ProjectileUtil.createArrowProjectile` 四参签名(1.21 带武器参;报错退三参)、`PersistentProjectileEntity#setVelocity` 五参、`Entity#getBodyY`、`SoundEvents.ENTITY_ARROW_SHOOT`(可能要 .value())、`ItemStack#copyWithCount`。

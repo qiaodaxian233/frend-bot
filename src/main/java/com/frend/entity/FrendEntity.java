@@ -258,18 +258,20 @@ public class FrendEntity extends PathAwareEntity {
      */
     public void autoEquipBestWeapon() {
         ItemStack main = this.getMainHandStack();
-        // 主手已有剑/斧,不动
+        // 主手已有剑/斧/弓,不动(弓是 v0.8 CombatGoal 按距离换上去的,别抢)
         if (!main.isEmpty()
                 && (main.isIn(net.minecraft.item.ItemTags.SWORDS)
-                    || main.isIn(net.minecraft.item.ItemTags.AXES))) return;
+                    || main.isIn(net.minecraft.item.ItemTags.AXES)
+                    || main.getItem() == net.minecraft.item.Items.BOW)) return;
 
         // 优先找剑
         for (int i = 0; i < inventory.size(); i++) {
             ItemStack s = inventory.getStack(i);
             if (s.isEmpty()) continue;
             if (s.isIn(net.minecraft.item.ItemTags.SWORDS)) {
+                ItemStack old = this.getMainHandStack();
                 this.setStackInHand(Hand.MAIN_HAND, s.copy());
-                inventory.setStack(i, ItemStack.EMPTY);
+                inventory.setStack(i, old.isEmpty() ? ItemStack.EMPTY : old.copy()); // 对调不覆盖,原主手物(火把/镐等)不消失
                 return;
             }
         }
@@ -278,8 +280,20 @@ public class FrendEntity extends PathAwareEntity {
             ItemStack s = inventory.getStack(i);
             if (s.isEmpty()) continue;
             if (s.isIn(net.minecraft.item.ItemTags.AXES)) {
+                ItemStack old = this.getMainHandStack();
                 this.setStackInHand(Hand.MAIN_HAND, s.copy());
-                inventory.setStack(i, ItemStack.EMPTY);
+                inventory.setStack(i, old.isEmpty() ? ItemStack.EMPTY : old.copy());
+                return;
+            }
+        }
+        // 三选弓(v0.8):只有弓没近战也拿着——战斗里按距离换械由 CombatGoal 负责
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack s = inventory.getStack(i);
+            if (s.isEmpty()) continue;
+            if (s.getItem() == net.minecraft.item.Items.BOW) {
+                ItemStack old = this.getMainHandStack();
+                this.setStackInHand(Hand.MAIN_HAND, s.copy());
+                inventory.setStack(i, old.isEmpty() ? ItemStack.EMPTY : old.copy());
                 return;
             }
         }

@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 6;
+    public static final int CURRENT_CONFIG_VERSION = 7;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -145,6 +145,10 @@ public class FrendConfig {
     // ===== v0.7 装备 =====
     /** 自动穿甲/拿盾:背包里有更好的盔甲就穿上,副手空着有盾就拿上。 */
     public boolean autoEquipArmor = true;
+
+    // ===== v0.8 弓箭远程 =====
+    /** 远程战斗:包里有弓有箭,目标远就拉弓,近了自动换回剑斧。 */
+    public boolean rangedEnabled = true;
 
     public static FrendConfig get() {
         if (INSTANCE == null) load();
