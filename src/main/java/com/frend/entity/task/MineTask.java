@@ -17,7 +17,8 @@ import net.minecraft.util.math.Direction;
  * <ul>
  *   <li><b>必须有镐</b>,没镐开口要,任务不开工;镐耐久见底(≤ toolReserveDurability)收工并说明。</li>
  *   <li>只挖<b>露头</b>的目标(至少一面挨着空气)——不无脑打洞;也不挖自己脚下那块(不自埋)。</li>
- *   <li>不做避岩浆/火把(设计文档排到 v0.5),DEVLOG 有记。</li>
+ *   <li><b>v0.6 挖掘避险</b>:目标六邻贴着岩浆 → 不挖(挖穿会被浇);头顶两格内是沙/沙砾 → 不挖(会被砸)。
+ *       目标每次开挖前复查——邻块被挖开后环境会变。火把在实体层(自动插),不归任务管。</li>
  * </ul>
  */
 public class MineTask extends FrendTask {
@@ -27,6 +28,8 @@ public class MineTask extends FrendTask {
     private final Kind kind;
     private BlockPos target = null;
     private int mined = 0;
+    /** v0.6:本次任务是否已经解释过"那块不敢挖"(一次任务最多念一次)。 */
+    private boolean saidDanger = false;
 
     public MineTask(FrendEntity frend, Kind kind) {
         super(frend);
@@ -54,7 +57,7 @@ public class MineTask extends FrendTask {
             return false;
         }
 
-        if (target == null || !matches(frend.getWorld().getBlockState(target))) {
+        if (target == null || !matches(frend.getWorld().getBlockState(target)) || !safeToMine(target)) {
             target = findNearest(cfg);
             if (target == null) {
                 frend.say(mined == 0
@@ -101,6 +104,7 @@ public class MineTask extends FrendTask {
             if (p.equals(below)) continue;
             if (!matches(frend.getWorld().getBlockState(p))) continue;
             if (!exposed(p)) continue;
+            if (!safeToMine(p)) continue;
             double d = p.getSquaredDistance(me);
             if (d < bestD) {
                 bestD = d;
@@ -108,6 +112,39 @@ public class MineTask extends FrendTask {
             }
         }
         return best;
+    }
+
+    /**
+     * v0.6 挖掘避险:六邻有岩浆(挖穿被浇)或头顶两格内有沙/沙砾(挖了被砸)→ 不碰。
+     * 第一次因此跳块解释一句,之后沉默照跳。
+     */
+    private boolean safeToMine(BlockPos p) {
+        if (!FrendConfig.get().mineSafetyEnabled) return true;
+        var world = frend.getWorld();
+        // 六邻岩浆
+        for (Direction dir : Direction.values()) {
+            // 【待编译验证】World#getFluidState + FluidState#isIn(FluidTags.LAVA)
+            if (world.getFluidState(p.offset(dir)).isIn(net.minecraft.registry.tag.FluidTags.LAVA)) {
+                explainDangerOnce("那块贴着岩浆,我不碰,命要紧。");
+                return false;
+            }
+        }
+        // 头顶两格沙/沙砾(FallingBlock)
+        for (int dy = 1; dy <= 2; dy++) {
+            // 【待编译验证】FallingBlock instanceof 判断(Blocks.SAND/GRAVEL 的基类)
+            if (world.getBlockState(p.up(dy)).getBlock() instanceof net.minecraft.block.FallingBlock) {
+                explainDangerOnce("那块头顶悬着沙子,挖了会被砸,跳过。");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void explainDangerOnce(String line) {
+        if (!saidDanger) {
+            saidDanger = true;
+            frend.sayDelayed(line);
+        }
     }
 
     private boolean exposed(BlockPos p) {

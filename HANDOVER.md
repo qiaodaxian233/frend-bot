@@ -28,9 +28,11 @@
 
 - frend = **本地运行的 Minecraft 陪伴机器人**:类玩家 NPC,像朋友一样陪玩家生存/聊天/干活/打怪,完全离线。蓝图见 `docs/DESIGN.md`,一句话产品定义:*不是外挂,不是刷材料机器,而是会记住你、陪你冒险的本地 AI 朋友*。
 - 核心架构原则(v0.4 起生效,现在就要守):**LLM 永不直接控制游戏**,只产出意图,执行走白名单技能 DSL。
-- 当前进度:**里程碑 6 / v0.5(自主行动)已落地,全部未经本地编译验证**。
+- 当前进度:**里程碑 7 / v0.6(矿下安全)已落地,全部未经本地编译验证**。
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
+
+m7(v0.6 矿下安全):三层防护——寻路层 setPathfindingPenalty(LAVA/DAMAGE_FIRE=-1 禁区,DANGER_FIRE=16,一处设置全局生效)+挖掘层 MineTask#safeToMine(六邻岩浆不挖/头顶两格 FallingBlock 不挖,选块过滤+开挖前复查,一次任务解释一次)+照明层 tryPlaceTorch(方块光<7 且天空光<7 双条件防白天误判+canPlaceAt+2s 硬冷却+光照自然拉间距+念叨 5min 一次+没火把 30s 退避不抱怨);config v4→v5 新增 autoTorch/torchLightThreshold/mineSafetyEnabled;新增待编译验证:PathNodeType 枚举/getLightLevel(LightType,pos)/canPlaceAt/getFluidState+FluidTags.LAVA/FallingBlock;仍未沙箱编译。 · 上一里程碑
 
 m6(v0.5 自主行动):entity/FrendAutonomy(mobTick 驱动,纯本地优先级规则=红线,LLM 不参与决策)+决策阶梯(包满≥70%→自主 DepositTask/有斧→ChopTree/有镐→MineTask.STONE/允许徒手兜底/没工具提一嘴)+触发条件 STAY 闲置 45s+防抽风(决策冷却 120s/开工<6s 秒结束→冷却×3 退避/FOLLOW 不离队只建议 10min 一次)+环境闲话(日出日落按游戏天去重/下雨状态沿/主人在 chatRadius 才说)+/frend auto on|off+关键词"自由活动/看着办"开"别自作主张/听我指挥"关+config v3→v4 六个新字段默认开;新增待编译验证:World#isRaining;仍未沙箱编译。 · 上一里程碑
 

@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 4;
+    public static final int CURRENT_CONFIG_VERSION = 5;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -133,6 +133,14 @@ public class FrendConfig {
     public boolean autonomyRequireTool = true;
     /** 环境闲话:日出/日落/下雨说一句(一天各一次,主人在旁边才说)。 */
     public boolean autonomyChatter = true;
+
+    // ===== v0.6 矿下安全 =====
+    /** 自动插火把:身处黑暗(方块光和天空光都低 = 在洞里)且背包有火把 → 脚下插一根。 */
+    public boolean autoTorch = true;
+    /** 光照阈值:低于此值算"太黑"(原版怪物在方块光 0 刷新,7 留足余量)。 */
+    public int torchLightThreshold = 7;
+    /** 挖掘避险:目标方块贴着岩浆、或头顶是沙/沙砾 → 跳过不挖。false = 艺高人胆大(不推荐)。 */
+    public boolean mineSafetyEnabled = true;
 
     public static FrendConfig get() {
         if (INSTANCE == null) load();

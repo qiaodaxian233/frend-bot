@@ -70,6 +70,10 @@ public class FrendEntity extends PathAwareEntity {
     private int ambientCooldown = 20 * 60; // 出生一分钟内不闲聊
     private int hurtTalkCooldown = 0;
 
+    // ===== v0.6 插火把冷却:放置间隔 + 说话独立冷却(插火把常有,念叨不能常有) =====
+    private int torchCooldown = 0;
+    private int torchTalkCooldown = 0;
+
     // ===== 聊天记忆(不落盘):LLM 上下文 + "对话延续窗口" + 请求节流 =====
     private final java.util.ArrayDeque<String[]> chatHistory = new java.util.ArrayDeque<>();
     private long lastTalkMillis = 0;          // frend 上次开口时间
@@ -104,6 +108,11 @@ public class FrendEntity extends PathAwareEntity {
         super(type, world);
         this.setPersistent(); // 不因玩家远离而消失
         this.setCanPickUpLoot(false);
+        // ===== v0.6 寻路避险:岩浆/火焰视为禁区,寻路永远绕开(生存本能第一层) =====
+        // 【待编译验证】PathNodeType 枚举名(Yarn 1.21.1:LAVA/DANGER_FIRE/DAMAGE_FIRE)
+        this.setPathfindingPenalty(net.minecraft.entity.ai.pathing.PathNodeType.LAVA, -1.0f);
+        this.setPathfindingPenalty(net.minecraft.entity.ai.pathing.PathNodeType.DAMAGE_FIRE, -1.0f);
+        this.setPathfindingPenalty(net.minecraft.entity.ai.pathing.PathNodeType.DANGER_FIRE, 16.0f);
     }
 
     /** 属性:数值走配置(配置在实体注册之前加载)。 */
@@ -321,6 +330,14 @@ public class FrendEntity extends PathAwareEntity {
         if (ambientCooldown > 0) ambientCooldown--;
         if (hurtTalkCooldown > 0) hurtTalkCooldown--;
         if (eatCooldown > 0) eatCooldown--;
+        if (torchCooldown > 0) torchCooldown--;
+        if (torchTalkCooldown > 0) torchTalkCooldown--;
+
+        // ===== v0.6 自动插火把:在洞里(方块光和天空光都低)+ 背包有火把 → 脚下插一根 =====
+        // 天空光条件挡住"白天野外方块光本来就是 0"的误判——地表 sky=15,永远不满足;只有洞里才插。
+        if (c.autoTorch && torchCooldown <= 0 && this.age % 30 == 0) {
+            tryPlaceTorch(c);
+        }
 
         // ===== 自动装备武器(v0.3):每 40 tick 扫一次背包,有剑/斧且主手空着就装上 =====
         if (c.combatEnabled && c.autoEquipWeapon && this.age % 40 == 0) {
@@ -484,6 +501,43 @@ public class FrendEntity extends PathAwareEntity {
 
     public void finishLlm() {
         llmBusy = false;
+    }
+
+    // ===================== v0.6 自动插火把 =====================
+
+    /**
+     * 在洞里太黑就往脚下插火把(矿洞安全本能,跟自动吃饭同级,不属于"自主找活")。
+     * 条件全满足才插:方块光 < 阈值(防刷怪)、天空光 < 阈值(证明在洞里,不是夜晚地表)、
+     * 脚下这格是空气且火把能站住、背包里真有火把。
+     * 插完靠光照自然拉开间距(照亮后周围不再"太黑"),外加 2 秒硬冷却兜底。
+     */
+    private void tryPlaceTorch(FrendConfig c) {
+        World world = this.getWorld();
+        BlockPos pos = this.getBlockPos();
+        // 【待编译验证】World#getLightLevel(LightType, BlockPos)
+        if (world.getLightLevel(net.minecraft.world.LightType.BLOCK, pos) >= c.torchLightThreshold) return;
+        if (world.getLightLevel(net.minecraft.world.LightType.SKY, pos) >= c.torchLightThreshold) return;
+        if (!world.getBlockState(pos).isAir()) return;
+        // 【待编译验证】BlockState#canPlaceAt(火把支撑面检查,原版标准 API)
+        if (!net.minecraft.block.Blocks.TORCH.getDefaultState().canPlaceAt(world, pos)) return;
+
+        // 背包里找火把
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack s = inventory.getStack(i);
+            if (s.getItem() == net.minecraft.item.Items.TORCH) {
+                world.setBlockState(pos, net.minecraft.block.Blocks.TORCH.getDefaultState());
+                s.decrement(1);
+                this.swingHand(Hand.MAIN_HAND, true);
+                torchCooldown = 40; // 2 秒硬冷却
+                if (torchTalkCooldown <= 0) {
+                    torchTalkCooldown = 20 * 300; // 5 分钟才念叨一次
+                    sayDelayed("这儿太黑了,我插个火把。");
+                }
+                return;
+            }
+        }
+        // 没火把:太黑但无能为力——不念叨(念了主人也未必在),交给状态汇报
+        torchCooldown = 20 * 30; // 30 秒内别再白扫
     }
 
     // ===================== NBT 持久化 =====================

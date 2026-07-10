@@ -163,3 +163,18 @@
 **开关**:`/frend auto on|off`;聊天说「自由活动 / 看着办 / 别闲着」开、「别自作主张 / 听我指挥」关。默认**开启**——这是产品主张:它就该是个不用管的伙伴。
 
 **【待编译验证】新增**:`World#isRaining()`(标准 API,风险极低)。配置版本 v3 → v4(gson 缺字段走默认值,老配置无痛升级)。
+
+---
+
+## 里程碑 7 / v0.6 — 矿下安全:生存本能三件套
+
+**背景**:MineTask 注释里自己立的 flag——「避岩浆/火把排到 v0.5」,版本顺延兑现。frend 会自己下矿干活了(v0.5 自主行动),没有生存本能等于自杀式打工。
+
+**三层防护**(由外到内):
+1. **寻路层**(FrendEntity 构造器):`setPathfindingPenalty` 把 LAVA/DAMAGE_FIRE 设为 -1(禁区)、DANGER_FIRE 设 16(重罚)——**任何**移动(跟随/回家/干活/战斗走位)都自动绕开岩浆和火,一处设置全局生效。
+2. **挖掘层**(MineTask#safeToMine):目标六邻贴岩浆 → 不挖(挖穿被浇);头顶两格内是 FallingBlock(沙/沙砾)→ 不挖(被砸)。选块时过滤 + 每次开挖前复查(邻块被挖开后环境会变)。一次任务最多解释一次("那块贴着岩浆,我不碰"),之后沉默照跳。可配 `mineSafetyEnabled` 关闭(不推荐)。
+3. **照明层**(FrendEntity#tryPlaceTorch):方块光 < 阈值 **且** 天空光 < 阈值(双条件 = 证明在洞里,挡住"白天野外方块光本来就是 0"的误判)+ 脚下空气 + 火把能站住 + 背包有火把 → 插一根。间距靠光照自然拉开 + 2 秒硬冷却;念叨 5 分钟一次;没火把不抱怨(30 秒退避)。
+
+**配置 v4 → v5**:`autoTorch=true` / `torchLightThreshold=7` / `mineSafetyEnabled=true`。
+
+**【待编译验证】新增**:`PathNodeType.LAVA/DAMAGE_FIRE/DANGER_FIRE` 枚举名、`World#getLightLevel(LightType, BlockPos)`、`BlockState#canPlaceAt`、`World#getFluidState` + `FluidTags.LAVA`、`FallingBlock` instanceof——全是原版稳定 API,风险低但签名细节需过一遍编译。
