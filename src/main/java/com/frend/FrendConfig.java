@@ -29,6 +29,8 @@ public class FrendConfig {
     public double frendMaxHealth = 20.0;
     /** 移动速度属性(人形怪常用 0.3;跟随时按 followSpeed 倍率小跑)。 */
     public double frendMoveSpeed = 0.3;
+    /** 基础近战攻击力(无武器时)。 */
+    public double frendAttackDamage = 2.0;
 
     // ============ 跟随 ============
     /** 与主人距离超过这个值(格)开始跟。 */
@@ -142,6 +144,22 @@ public class FrendConfig {
             save();
         }
     }
+
+    // ===== 战斗(v0.3) =====
+    /** 是否启用战斗系统。 */
+    public boolean combatEnabled = true;
+    /** 主动清怪半径(格)。 */
+    public double combatRange = 12.0;
+    /** 是否使用背包里的剑/斧当武器。 */
+    public boolean autoEquipWeapon = true;
+    /** 是否允许举盾防御(副手需要有盾)。 */
+    public boolean shieldEnabled = true;
+    /** 血量低于此值时触发撤退(原始 HP,满血 20)。 */
+    public double retreatBelowHealth = 6.0;
+    /** 撤退持续时间(秒),结束后恢复战斗。 */
+    public int retreatDurationSeconds = 8;
+    /** 是否在主人被攻击时自动支援。 */
+    public boolean supportOwner = true;
 
     public static void save() {
         Path path = FabricLoader.getInstance().getConfigDir().resolve("frend.json");

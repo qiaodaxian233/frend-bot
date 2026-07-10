@@ -72,6 +72,20 @@ public final class FrendCommands {
                                         f.stopTask("收工!"))))
                         )
 
+                        // v0.3 战斗
+                        .then(CommandManager.literal("combat")
+                                .then(CommandManager.literal("on").executes(ctx -> {
+                                    FrendConfig.get().combatEnabled = true;
+                                    ctx.getSource().sendFeedback(() -> net.minecraft.text.Text.literal("[frend] 战斗模式已开启"), false);
+                                    return forEachOwned(ctx, f -> f.sayDelayed("收到,遇怪就上!"));
+                                }))
+                                .then(CommandManager.literal("off").executes(ctx -> {
+                                    FrendConfig.get().combatEnabled = false;
+                                    ctx.getSource().sendFeedback(() -> net.minecraft.text.Text.literal("[frend] 战斗模式已关闭"), false);
+                                    return forEachOwned(ctx, f -> f.sayDelayed("好,我按兵不动。"));
+                                }))
+                        )
+
                         .then(CommandManager.literal("dismiss").executes(FrendCommands::dismiss))
         ));
     }

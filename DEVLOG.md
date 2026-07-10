@@ -59,3 +59,45 @@
 - 每次任务上限 maxBlocksPerJob=32 块,到数收工汇报——防一句"挖矿"挖穿地图。
 
 **【待编译验证】新增**:`World#setBlockBreakingInfo`(破坏进度动画)、`DataComponentTypes.FOOD`/`FoodComponent#nutrition()`、`ItemStack.areItemsAndComponentsEqual`、`SoundEvents.ENTITY_GENERIC_EAT` 是否 RegistryEntry(代码里带 `.value()`,报错就去掉)、`ItemTags.AXES/PICKAXES/SWORDS/SHOVELS`。两个模式 switch 已补 WORK 分支(否则 switch 不穷尽直接编译失败)。
+
+---
+
+## 里程碑 4 — v0.3 能打怪:战斗 / 支援 / 盾牌 / 撤退 / 自动装备
+
+作者指令:**继续**(照路线图 v0.3)。
+
+落地内容:
+
+- **`FrendCombatGoal`**:优先级 2(高于跟随/回家,低于撤退和游泳)。  
+  - FOLLOW + WORK 模式下自动扫描 `combatRange`(默认 12 格)内 `HostileEntity`,就近攻击;  
+  - 支援主人:主人被攻击时 `Frend.java` 主类事件注入目标(`ServerLivingEntityEvents.ALLOW_DAMAGE`);  
+  - 攻击间隔:有剑/斧 16 tick(0.8s),无武器 20 tick(1s),全异步 Goal 驱动不卡服;  
+  - 战斗喊话:低概率随机(\"拿命来!\" 等 6 条),不刷屏;  
+  - 副手盾牌:目标 5 格内自动举盾(`setCurrentHand(OFF_HAND)`),40 tick 自动放;出拳前先放盾;  
+  - 保持距离:远了追,贴着了退一步(1.5 格临界);
+
+- **`FrendRetreatGoal`**:优先级 1(最高)。  
+  - 血量 ≤ `retreatBelowHealth`(默认 6 HP)触发;  
+  - 向主人方向跑路 `retreatDurationSeconds`(默认 8 秒);  
+  - 恢复时说\"好多了,再来!\";
+
+- **`FrendEntity` 新增**:  
+  - `combatGoal` 字段 + `onOwnerHurt(attacker)` 公共入口;  
+  - `autoEquipBestWeapon()`:每 40 tick 扫背包,剑 > 斧,装到主手(主手已有武器不替换);  
+  - `createFrendAttributes()` 新增 `frendAttackDamage`(默认 2.0,可配);  
+  - `initGoals()` 重排:SwimGoal(0)→RetreatGoal(1)→CombatGoal(2)→FollowOwner(3)→GoHome(4)→LookAt(6)→LookAround(7);
+
+- **`FrendConfig` 新增**:`combatEnabled/combatRange/autoEquipWeapon/shieldEnabled/retreatBelowHealth/retreatDurationSeconds/supportOwner/frendAttackDamage`;
+
+- **`FrendChatHandler` 新增**:\"保护我/打怪/冲啊/攻击\" → 开战斗;\"别打了/住手/收剑\" → 关战斗;
+
+- **`FrendCommands` 新增**:`/frend combat on|off`;
+
+- **`Frend.java` 重构**:注册 `ServerLivingEntityEvents.ALLOW_DAMAGE` 监听主人受伤 → 通知 frend;
+
+**【待编译验证】新增**:
+- `ServerLivingEntityEvents.ALLOW_DAMAGE` 签名(Fabric entity-events-v1,yongye 里已用过,风险低);
+- `frend.isBlocking()` / `frend.clearActiveItem()` / `frend.setCurrentHand(Hand)` — PathAwareEntity 继承自 LivingEntity,均为 1.21 稳定 API;
+- `frend.tryAttack(target)` — MobEntity 标准 API;
+
+旧待验证项(v0.1–v0.2)不变,一起本地 build 时再确认。

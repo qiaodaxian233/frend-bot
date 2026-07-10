@@ -45,6 +45,10 @@ public final class FrendChatHandler {
     private static final String[] KEY_DEPOSIT = {"存箱子", "回家存", "存东西", "去存", "deposit"};
     private static final String[] KEY_WORKSTOP = {"收工", "别干了", "别挖了", "别砍了", "休息吧"};
 
+    // ===== v0.3 战斗关键词 =====
+    private static final String[] KEY_COMBAT_ON  = {"保护我", "打怪", "战斗模式", "去打", "帮我打", "冲啊", "攻击"};
+    private static final String[] KEY_COMBAT_OFF = {"别打了", "住手", "不用打", "停止攻击", "收剑"};
+
     // ===== 闲聊关键词(规则模式的回话;LLM 模式下作为失败兜底) =====
     private static final String[] KEY_GREET  = {"你好", "在吗", "嗨", "hello", "hi"};
     private static final String[] KEY_THANKS = {"谢谢", "辛苦", "thank"};
@@ -144,6 +148,12 @@ public final class FrendChatHandler {
                 frend.setMode(FrendEntity.Mode.GO_HOME);
                 frend.sayDelayed(pick(R_HOME_OK));
             }
+        } else if (matches(text, KEY_COMBAT_ON)) {
+            FrendConfig.get().combatEnabled = true;
+            frend.sayDelayed("收到!遇到怪我来解决。");
+        } else if (matches(text, KEY_COMBAT_OFF)) {
+            FrendConfig.get().combatEnabled = false;
+            frend.sayDelayed("好,我不动手了,你说打才打。");
         } else if (matches(text, KEY_STATUS)) {
             frend.sayDelayed(statusLine(frend));
         } else {

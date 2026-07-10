@@ -91,6 +91,9 @@ public class FrendEntity extends PathAwareEntity {
             "没事,小伤,继续走。"
     };
 
+    /** v0.3 战斗:持引用以便 onDamaged 通知支援。 */
+    private FrendCombatGoal combatGoal;
+
     public FrendEntity(EntityType<? extends PathAwareEntity> type, World world) {
         super(type, world);
         this.setPersistent(); // 不因玩家远离而消失
@@ -103,15 +106,19 @@ public class FrendEntity extends PathAwareEntity {
         return PathAwareEntity.createMobAttributes()
                 .add(EntityAttributes.GENERIC_MAX_HEALTH, c.frendMaxHealth)
                 .add(EntityAttributes.GENERIC_MOVEMENT_SPEED, c.frendMoveSpeed)
-                .add(EntityAttributes.GENERIC_ATTACK_DAMAGE, 1.0)
+                .add(EntityAttributes.GENERIC_ATTACK_DAMAGE, c.frendAttackDamage)
                 .add(EntityAttributes.GENERIC_FOLLOW_RANGE, 48.0);
     }
 
     @Override
     protected void initGoals() {
+        combatGoal = new FrendCombatGoal(this);
+        FrendRetreatGoal retreatGoal = new FrendRetreatGoal(this, combatGoal);
         this.goalSelector.add(0, new SwimGoal(this));
-        this.goalSelector.add(2, new FrendFollowOwnerGoal(this));
-        this.goalSelector.add(3, new FrendGoHomeGoal(this));
+        this.goalSelector.add(1, retreatGoal);          // 撤退优先于战斗
+        this.goalSelector.add(2, combatGoal);           // 战斗优先于跟随
+        this.goalSelector.add(3, new FrendFollowOwnerGoal(this));
+        this.goalSelector.add(4, new FrendGoHomeGoal(this));
         this.goalSelector.add(6, new LookAtEntityGoal(this, PlayerEntity.class, 8.0f));
         this.goalSelector.add(7, new LookAroundGoal(this));
     }
@@ -211,6 +218,42 @@ public class FrendEntity extends PathAwareEntity {
         }
     }
 
+    // ===================== v0.3 战斗工具 =====================
+
+    /**
+     * 从背包里找最好的武器(剑 > 斧)装到主手。
+     * 主手已有武器时不替换(避免干活时把工具换走)。
+     * 【待编译验证】ItemTags.SWORDS / ItemTags.AXES — v0.1 DEVLOG 已列,同 MineTask。
+     */
+    public void autoEquipBestWeapon() {
+        ItemStack main = this.getMainHandStack();
+        // 主手已有剑/斧,不动
+        if (!main.isEmpty()
+                && (main.isIn(net.minecraft.item.ItemTags.SWORDS)
+                    || main.isIn(net.minecraft.item.ItemTags.AXES))) return;
+
+        // 优先找剑
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack s = inventory.getStack(i);
+            if (s.isEmpty()) continue;
+            if (s.isIn(net.minecraft.item.ItemTags.SWORDS)) {
+                this.setStackInHand(Hand.MAIN_HAND, s.copy());
+                inventory.setStack(i, ItemStack.EMPTY);
+                return;
+            }
+        }
+        // 次选斧
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack s = inventory.getStack(i);
+            if (s.isEmpty()) continue;
+            if (s.isIn(net.minecraft.item.ItemTags.AXES)) {
+                this.setStackInHand(Hand.MAIN_HAND, s.copy());
+                inventory.setStack(i, ItemStack.EMPTY);
+                return;
+            }
+        }
+    }
+
     // ===================== 交互 =====================
 
     @Override
@@ -264,6 +307,11 @@ public class FrendEntity extends PathAwareEntity {
         if (ambientCooldown > 0) ambientCooldown--;
         if (hurtTalkCooldown > 0) hurtTalkCooldown--;
         if (eatCooldown > 0) eatCooldown--;
+
+        // ===== 自动装备武器(v0.3):每 40 tick 扫一次背包,有剑/斧且主手空着就装上 =====
+        if (c.combatEnabled && c.autoEquipWeapon && this.age % 40 == 0) {
+            autoEquipBestWeapon();
+        }
 
         // ===== 任务驱动(WORK 模式) =====
         if (currentTask != null) {
@@ -329,6 +377,16 @@ public class FrendEntity extends PathAwareEntity {
             sayDelayed(HURT_LINES[this.random.nextInt(HURT_LINES.length)]);
         }
         return hurt;
+    }
+
+    /**
+     * 主人被攻击时由外部(Frend.java 事件监听)调用 → 通知 combatGoal 支援。
+     * 只在服务端调用。
+     */
+    public void onOwnerHurt(net.minecraft.entity.LivingEntity attacker) {
+        if (combatGoal != null && FrendConfig.get().supportOwner) {
+            combatGoal.onOwnerHurt(attacker);
+        }
     }
 
     @Override
