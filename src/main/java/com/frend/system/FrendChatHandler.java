@@ -52,6 +52,10 @@ public final class FrendChatHandler {
     // ===== v0.4 记忆关键词 =====
     private static final String[] KEY_MEMORY = {"还记得", "记得吗", "认识多久", "多少天", "战绩", "杀了多少", "干了多少", "回忆"};
 
+    // ===== v0.5 自主行动开关关键词 =====
+    private static final String[] KEY_AUTO_ON  = {"自由活动", "自己找事", "自己安排", "别闲着", "看着办"};
+    private static final String[] KEY_AUTO_OFF = {"别自作主张", "听我指挥", "等我命令", "别瞎忙"};
+
     // ===== 闲聊关键词(规则模式的回话;LLM 模式下作为失败兜底) =====
     private static final String[] KEY_GREET  = {"你好", "在吗", "嗨", "hello", "hi"};
     private static final String[] KEY_THANKS = {"谢谢", "辛苦", "thank"};
@@ -157,6 +161,12 @@ public final class FrendChatHandler {
         } else if (matches(text, KEY_COMBAT_OFF)) {
             FrendConfig.get().combatEnabled = false;
             frend.sayDelayed("好,我不动手了,你说打才打。");
+        } else if (matches(text, KEY_AUTO_ON)) {
+            FrendConfig.get().autonomyEnabled = true;
+            frend.sayDelayed("好嘞,那我自己看着办——该砍砍、该存存,你随时喊\"收工\"。");
+        } else if (matches(text, KEY_AUTO_OFF)) {
+            FrendConfig.get().autonomyEnabled = false;
+            frend.sayDelayed("收到,没你的话我不乱动。");
         } else if (matches(text, KEY_MEMORY)) {
             frend.sayDelayed(frend.getMemory().recapLine(frend.getWorld().getTime()));
         } else if (matches(text, KEY_STATUS)) {

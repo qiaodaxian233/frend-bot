@@ -97,6 +97,9 @@ public class FrendEntity extends PathAwareEntity {
     /** v0.4 长期记忆:相识天数/击杀/救主/干活量/大事记,随 NBT 持久化。 */
     private final FrendMemory memory = new FrendMemory();
 
+    /** v0.5 自主行动:待命时自己找活、包满自己去存、环境闲话。 */
+    private final FrendAutonomy autonomy = new FrendAutonomy(this);
+
     public FrendEntity(EntityType<? extends PathAwareEntity> type, World world) {
         super(type, world);
         this.setPersistent(); // 不因玩家远离而消失
@@ -351,6 +354,9 @@ public class FrendEntity extends PathAwareEntity {
         if (c.autoEat && eatCooldown <= 0 && this.getHealth() < (float) c.autoEatBelowHealth) {
             if (tryEat()) eatCooldown = c.eatCooldownSeconds * 20;
         }
+
+        // ===== v0.5 自主行动:待命时自己找活/包满自己存/环境闲话(全规则驱动) =====
+        autonomy.tick(c);
 
         // 被动缓慢回血(没吃的时的保底)
         if (c.passiveRegen && this.age % Math.max(1, c.regenIntervalTicks) == 0

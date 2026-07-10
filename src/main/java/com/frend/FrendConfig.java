@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 3;
+    public static final int CURRENT_CONFIG_VERSION = 4;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -119,6 +119,20 @@ public class FrendConfig {
     public int regenIntervalTicks = 80;
     /** 每次回血量(点)。 */
     public double regenAmount = 1.0;
+
+    // ===== v0.5 自主行动 =====
+    /** 总开关:不等命令自己找活干(存箱子/砍树/凿石)+ 环境闲话。 */
+    public boolean autonomyEnabled = true;
+    /** STAY 待命闲置多少秒后自主开工。 */
+    public int autonomyIdleSeconds = 45;
+    /** 一次自主决策后的冷却(秒)——防抽风连环决策。 */
+    public int autonomyCooldownSeconds = 120;
+    /** 背包非空格占比达到多少,自己回家存箱子(0~1)。 */
+    public double autonomyDepositAtFullness = 0.7;
+    /** 自主干活必须有对应工具(false = 允许徒手砍树,不推荐,磨叽)。 */
+    public boolean autonomyRequireTool = true;
+    /** 环境闲话:日出/日落/下雨说一句(一天各一次,主人在旁边才说)。 */
+    public boolean autonomyChatter = true;
 
     public static FrendConfig get() {
         if (INSTANCE == null) load();

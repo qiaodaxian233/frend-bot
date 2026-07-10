@@ -87,6 +87,20 @@ public final class FrendCommands {
                                 }))
                         )
 
+                        // v0.5 自主行动开关
+                        .then(CommandManager.literal("auto")
+                                .then(CommandManager.literal("on").executes(ctx -> {
+                                    FrendConfig.get().autonomyEnabled = true;
+                                    ctx.getSource().sendFeedback(() -> net.minecraft.text.Text.literal("[frend] 自主行动已开启"), false);
+                                    return forEachOwned(ctx, f -> f.sayDelayed("好嘞,那我自己看着办——该砍砍、该存存。"));
+                                }))
+                                .then(CommandManager.literal("off").executes(ctx -> {
+                                    FrendConfig.get().autonomyEnabled = false;
+                                    ctx.getSource().sendFeedback(() -> net.minecraft.text.Text.literal("[frend] 自主行动已关闭"), false);
+                                    return forEachOwned(ctx, f -> f.sayDelayed("收到,没你的话我不乱动。"));
+                                }))
+                        )
+
                         .then(CommandManager.literal("dismiss").executes(FrendCommands::dismiss))
         ));
     }
