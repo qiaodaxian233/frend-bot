@@ -303,6 +303,9 @@ public class FrendEntity extends PathAwareEntity {
         super.mobTick();
         FrendConfig c = FrendConfig.get();
 
+        // 撤退计时递减(CombatGoal 不激活时不 tick,不在这儿减就是"撤退一次终身和平"bug)
+        if (combatGoal != null) combatGoal.tickRetreatCooldown();
+
         if (lowHealthWarnCooldown > 0) lowHealthWarnCooldown--;
         if (ambientCooldown > 0) ambientCooldown--;
         if (hurtTalkCooldown > 0) hurtTalkCooldown--;

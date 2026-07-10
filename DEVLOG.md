@@ -101,3 +101,16 @@
 - `frend.tryAttack(target)` — MobEntity 标准 API;
 
 旧待验证项(v0.1–v0.2)不变,一起本地 build 时再确认。
+
+---
+
+## 里程碑 4.1 — 远端 m4 代码审查修复(4 处)
+
+背景:m4 出现并行开发——本地写了一版 v0.3,推送时发现远端已有另一版 m4(另一会话产出)。**弃用本地版、采用远端已发布版**(不覆盖已发布历史),审查后修了 4 处:
+
+1. **红线漏洞(必修)**:`onOwnerHurt` 支援链路没过滤攻击者类型——主人被玩家打,frend 会打玩家(PVP 工具化)。补:`attacker instanceof PlayerEntity / FrendEntity` 直接忽略。
+2. **"终身和平"bug**:`FrendCombatGoal.retreatTicks` 置位后无任何递减路径(Goal 不激活就不 tick),撤退一次后 `isInRetreating()` 永真、再也不战斗。补 `tickRetreatCooldown()`,由 `FrendEntity#mobTick` 每 tick 驱动。
+3. **攻击距离公式错**:`dist <= attackInterval * 0.6 + 2.5` 把攻击间隔(tick)当距离(格)用,≈12 格隔空打人。改为近战 3 格。
+4. **索敌白名单 + 苦力怕**:原来 HostileEntity 全打(会主动招惹末影人/女巫等),且贴脸打苦力怕必炸。补白名单(僵尸系/骷髅系/苦力怕,按设计文档)+ 点火拉距 6 格(【待编译验证】CreeperEntity#getFuseSpeed)。
+
+流程教训已记 SKILL:**动工前先 fetch 核对远端 HEAD**,本地 ≠ 最新。

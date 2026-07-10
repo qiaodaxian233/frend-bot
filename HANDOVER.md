@@ -32,6 +32,8 @@
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
 
+m4.1(远端 m4 审查修复):并行开发冲突→弃本地版采远端版;修 4 处:onOwnerHurt 过滤玩家/同类(PVP 红线)、tickRetreatCooldown 补撤退计时递减(终身和平 bug)、攻击距离 12 格→3 格(间隔当距离用)、索敌白名单僵尸/骷髅/苦力怕+点火拉距;教训:动工前先 fetch 远端 HEAD。 · 上一里程碑
+
 m3(v0.2 能干活):entity/task 任务框架(不落盘状态机,Mode.WORK,mobTick 驱动,切模式自然打断,重载退 STAY)+ChopTreeTask(BFS 整树/斧头可选)+MineTask(STONE/ORE,必须有镐,只挖露头,不自埋)+DepositTask(回家找箱倒货,工具食物自留)+工具耐久(findUsableTool 留量/damageTool 手动 setDamage 弃 ItemStack#damage)+自动进食(FOOD 组件,饱食度换算回血)+任务中捡拾;/frend work 5 子命令+聊天关键词(DEPOSIT 必须排在 HOME 前);新增待编译验证:setBlockBreakingInfo/FOOD 组件/areItemsAndComponentsEqual/ENTITY_GENERIC_EAT 是否 RegistryEntry/工具 ItemTags;仍未沙箱编译。 · 上一里程碑
 m2(聊天大脑双后端):FrendLlmClient(OpenAI 兼容 /chat/completions,JDK HttpClient+gson 零新依赖,默认指本地 Ollama :11434/v1,全异步+server.execute 回主线程+响应清洗)+FrendChatHandler 重构(指令关键词永远走规则=红线;闲聊按 config.chatBackend 分流 rules/openai,LLM 失败/节流退模板;对话延续窗口 15s;夸奖/道别新关键词)+FrendEntity 聊天记忆环形队列/窗口计时/请求节流+FrendConfig v2 聊天大脑段;新增待编译验证:World#getTimeOfDay、ServerWorld#getServer;仍未沙箱编译。 · 上一里程碑
 m1(v0.1 能出生/跟随/聊天):1.21.1 工程骨架+FrendEntity(主人绑定/三模式/家/27格背包/NBT)+跟随与回家 Goal+规则层聊天(关键词+模板+延迟回话)+像人细节(低血提醒/闲聊/受伤喊/遗言/被动回血/跑丢兜底传送)+Steve 皮肤玩家模型渲染【待编译验证】+/frend 指令树 8 个子命令;版本决策:弃 1.20.1 改 1.21.1(照抄 yongye 已验证 API);未在沙箱编译,待作者本地 build 回传报错。

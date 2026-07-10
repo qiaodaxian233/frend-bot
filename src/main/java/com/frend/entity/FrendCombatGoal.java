@@ -68,10 +68,20 @@ public class FrendCombatGoal extends Goal {
         if (frend.getMode() != FrendEntity.Mode.FOLLOW) return;
         if (isInRetreating()) return;
         if (attacker == null || !attacker.isAlive()) return;
+        if (attacker instanceof PlayerEntity) return;  // 红线:不打玩家,不做 PVP 工具
+        if (attacker instanceof FrendEntity) return;   // 红线:不打同类
         injectedTarget = attacker;
     }
 
     public boolean isInRetreating() { return retreatTicks > 0; }
+
+    /** 撤退计时递减(Goal 不激活时不会 tick,由 FrendEntity#mobTick 每 tick 调,否则撤退一次就永久和平)。 */
+    public void tickRetreatCooldown() {
+        if (retreatTicks > 0) {
+            retreatTicks--;
+            if (retreatTicks == 0) retreatNoticeSent = false; // 下次撤退还能喊
+        }
+    }
     public LivingEntity getCurrentTarget() { return target; }
 
     // ===================== Goal 生命周期 =====================
@@ -148,6 +158,18 @@ public class FrendCombatGoal extends Goal {
 
         double dist = frend.distanceTo(target);
 
+        // ===== 苦力怕点火 → 别贴脸,反向拉开(不然清苦力怕 = 自杀 + 炸地形) =====
+        // 【待编译验证】CreeperEntity#getFuseSpeed(>0 = 正在点火)
+        if (target instanceof net.minecraft.entity.mob.CreeperEntity creeper && creeper.getFuseSpeed() > 0 && dist < 6.0) {
+            double ax = frend.getX() - creeper.getX(), az = frend.getZ() - creeper.getZ();
+            double al = Math.sqrt(ax * ax + az * az);
+            if (al < 0.01) { ax = 1; al = 1; }
+            frend.getNavigation().startMovingTo(
+                    frend.getX() + ax / al * 6, frend.getY(), frend.getZ() + az / al * 6,
+                    c.followSpeed * 1.2);
+            return; // 这 tick 不追不打
+        }
+
         // ===== 盾牌格挡:副手有盾 + 目标近距离时举盾 =====
         if (c.shieldEnabled) {
             net.minecraft.item.ItemStack offhand = frend.getStackInHand(Hand.OFF_HAND);
@@ -173,7 +195,7 @@ public class FrendCombatGoal extends Goal {
 
         // ===== 攻击 =====
         int attackInterval = computeAttackInterval(c);
-        if (dist <= attackInterval * 0.6 + 2.5 && attackCooldown <= 0) {
+        if (dist <= 3.0 && attackCooldown <= 0) { // 近战够得着才打(原式把攻击间隔当距离用,会 12 格隔空打人)
             attackCooldown = attackInterval;
             if (frend.isBlocking()) frend.clearActiveItem(); // 出拳前放盾
             frend.swingHand(Hand.MAIN_HAND, true);
@@ -191,11 +213,18 @@ public class FrendCombatGoal extends Goal {
         List<HostileEntity> hostiles = frend.getWorld().getEntitiesByClass(
                 HostileEntity.class,
                 new Box(frend.getBlockPos()).expand(range),
-                e -> e.isAlive() && !e.isSpectator() && frend.canSee(e));
+                e -> e.isAlive() && !e.isSpectator() && isWhitelisted(e) && frend.canSee(e));
         if (hostiles.isEmpty()) return null;
         hostiles.sort((a, b) -> Double.compare(
                 frend.squaredDistanceTo(a), frend.squaredDistanceTo(b)));
         return hostiles.get(0);
+    }
+
+    /** 主动清怪白名单(设计文档 v0.3):僵尸系/骷髅系/苦力怕。别的敌对怪不主动招惹(末影人看一眼就疯)。 */
+    private boolean isWhitelisted(LivingEntity e) {
+        return e instanceof net.minecraft.entity.mob.ZombieEntity
+                || e instanceof net.minecraft.entity.mob.AbstractSkeletonEntity
+                || e instanceof net.minecraft.entity.mob.CreeperEntity;
     }
 
     /** 走向主人背后撤退一段时间。 */
