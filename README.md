@@ -33,7 +33,8 @@
 /frend come        过来
 /frend home set    把家定在你脚下
 /frend home go     让它回家
-/frend status      汇报状态
+/frend status      汇报状态(含战绩)
+/frend memory      口头回忆(相识天数/击杀/救主/大事记)
 /frend work chop     砍树
 /frend work stone    挖石头
 /frend work ore      挖煤和铁
@@ -42,7 +43,7 @@
 /frend dismiss     解散(先掉落背包)
 ```
 
-聊天关键词(附近 16 格内说话即可,无需指令):跟我来 / 停下 / 过来 / 回家 / 报告 / 砍树 / 挖石头 / 挖矿 / 存箱子 / 收工 / 你好 / 谢谢……
+聊天关键词(附近 16 格内说话即可,无需指令):跟我来 / 停下 / 过来 / 回家 / 报告 / 砍树 / 挖石头 / 挖矿 / 存箱子 / 收工 / 保护我 / 别打了 / 还记得吗 / 战绩 / 你好 / 谢谢……
 
 ## 三、构建
 

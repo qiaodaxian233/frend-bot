@@ -51,6 +51,9 @@ public class FrendCombatGoal extends Goal {
     /** 攻击目标丢失/死亡的累计 tick(超时放弃)。 */
     private int lostTargetTicks = 0;
 
+    /** v0.4:当前目标是否来自"支援主人"注入——干掉它算一次救主。 */
+    private boolean defendingOwner = false;
+
     public FrendCombatGoal(FrendEntity frend) {
         this.frend = frend;
         setControls(EnumSet.of(Control.MOVE, Control.LOOK));
@@ -101,11 +104,13 @@ public class FrendCombatGoal extends Goal {
                 && frend.squaredDistanceTo(injectedTarget) < (c.combatRange * 2.5) * (c.combatRange * 2.5)) {
             target = injectedTarget;
             injectedTarget = null;
+            defendingOwner = true;
             return true;
         }
 
         // 自动扫描附近 HostileEntity
         target = findNearestHostile(c.combatRange);
+        defendingOwner = false;
         return target != null;
     }
 
@@ -125,6 +130,7 @@ public class FrendCombatGoal extends Goal {
         lostTargetTicks = 0;
         attackCooldown = 0;
         blockTicks = 0;
+        defendingOwner = false;
         // 举盾状态解除
         if (frend.isBlocking()) frend.clearActiveItem();
     }
@@ -200,6 +206,20 @@ public class FrendCombatGoal extends Goal {
             if (frend.isBlocking()) frend.clearActiveItem(); // 出拳前放盾
             frend.swingHand(Hand.MAIN_HAND, true);
             frend.tryAttack(target);
+            // ===== v0.4 记忆埋点:这一下打死了 → 记击杀;若是救主之战 → 记救主 =====
+            if (!target.isAlive()) {
+                long now = frend.getWorld().getTime();
+                String mobName = target.getName().getString();
+                String milestone = frend.getMemory().recordKill(mobName, now);
+                if (defendingOwner) {
+                    String rescueLine = frend.getMemory().recordRescue(mobName, now);
+                    if (rescueLine != null) frend.sayDelayed(rescueLine);
+                    defendingOwner = false;
+                } else if (milestone != null) {
+                    frend.sayDelayed(milestone); // 里程碑一生一次,优先级低于救主感慨
+                }
+                return; // 目标已死,下 tick 走丢失目标逻辑收尾
+            }
             // 偶尔喊话
             if (frend.random.nextFloat() < 0.08f) {
                 frend.sayDelayed(FIGHT_LINES[frend.random.nextInt(FIGHT_LINES.length)]);

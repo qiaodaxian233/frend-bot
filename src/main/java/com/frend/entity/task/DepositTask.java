@@ -117,6 +117,9 @@ public class DepositTask extends FrendTask {
             frend.say("存了 " + movedStacks + " 组,箱子满了,剩下的我先背着。");
         } else {
             frend.say("存好了," + movedStacks + " 组东西入库。工具和干粮我自己留着。");
+            if (movedStacks >= 8) { // v0.4 记忆埋点:大丰收才记一笔,不刷大事记
+                frend.getMemory().record(frend.getWorld().getTime(), "满载而归,入库 " + movedStacks + " 组物资");
+            }
         }
     }
 

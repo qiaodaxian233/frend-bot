@@ -76,6 +76,7 @@ public class MineTask extends FrendTask {
 
         if (breakTick(target, cfg.mineTicksPerBlock)) {
             mined++;
+            frend.getMemory().addMined(1); // v0.4 记忆埋点
             frend.damageTool(pick);
             target = null;
         }

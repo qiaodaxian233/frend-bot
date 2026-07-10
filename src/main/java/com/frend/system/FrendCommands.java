@@ -58,6 +58,7 @@ public final class FrendCommands {
                                 .then(CommandManager.literal("go").executes(FrendCommands::homeGo)))
 
                         .then(CommandManager.literal("status").executes(FrendCommands::status))
+                        .then(CommandManager.literal("memory").executes(FrendCommands::memory))
 
                         .then(CommandManager.literal("work")
                                 .then(CommandManager.literal("chop").executes(ctx -> forEachOwned(ctx, f ->
@@ -152,6 +153,11 @@ public final class FrendCommands {
 
     private static int status(CommandContext<ServerCommandSource> ctx) {
         return forEachOwned(ctx, f -> f.sayDelayed(FrendChatHandler.statusLine(f)));
+    }
+
+    /** v0.4:frend 口头回忆战绩与大事记。 */
+    private static int memory(CommandContext<ServerCommandSource> ctx) {
+        return forEachOwned(ctx, f -> f.sayDelayed(f.getMemory().recapLine(f.getWorld().getTime())));
     }
 
     private static int dismiss(CommandContext<ServerCommandSource> ctx) {

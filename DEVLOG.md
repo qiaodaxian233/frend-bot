@@ -114,3 +114,29 @@
 4. **索敌白名单 + 苦力怕**:原来 HostileEntity 全打(会主动招惹末影人/女巫等),且贴脸打苦力怕必炸。补白名单(僵尸系/骷髅系/苦力怕,按设计文档)+ 点火拉距 6 格(【待编译验证】CreeperEntity#getFuseSpeed)。
 
 流程教训已记 SKILL:**动工前先 fetch 核对远端 HEAD**,本地 ≠ 最新。
+
+---
+
+## 里程碑 5 / v0.4 — 长期记忆:frend 记得你们的故事
+
+**目标**:「像真人」的下一块拼图——真人朋友记得共同经历。frend 现在有一份随 NBT 持久化的记忆档案,聊天和汇报都会自然带出来。
+
+**新文件**:`entity/FrendMemory.java`——三层结构:
+1. **计数器**:相识时刻(world time,`setOwner` 首次调用时落笔)→ 换算「一起冒险第 X 天」;击杀数;救主次数;砍木/挖矿方块数。
+2. **大事记**:最近 12 条带天数戳的事件(旧的挤掉)。会记:首杀、击杀里程碑(10/50/100/500,一生一次)、每次救主、大额入库(≥8 组)。
+3. **输出**:`recapLine`(口头回忆)、`llmSummary`(LLM 人设注入,省 token 只带 3 条近事)、`statusBrief`(状态汇报尾巴)。
+
+**埋点**(全部一行式,不侵入原逻辑):
+- `FrendCombatGoal.tick`:`tryAttack` 后目标死了 → `recordKill`;若目标来自「支援主人」注入(新 `defendingOwner` 标志,`canStart` 置位、`stop` 复位)→ `recordRescue`,首次救主有专属感慨。
+- `ChopTreeTask` / `MineTask`:计数同步进记忆。
+- `DepositTask`:入库 ≥8 组记一笔「满载而归」。
+
+**出口**:
+- 聊天关键词(规则,红线不变):「还记得 / 记得吗 / 认识多久 / 多少天 / 战绩 / 杀了多少 / 回忆」→ 口头回忆。
+- `/frend memory` 指令,同款输出。
+- `/frend status` 末尾追加战绩短句(空战绩不显示)。
+- LLM 模式:persona 注入共同经历摘要——闲聊时它会自己提「上次从骷髅手里救你那回」,这才叫老朋友。
+
+**设计取舍**:记忆存实体 NBT、frend 死了记忆一起消失——刻意的。它不是数据库,是"这一个伙伴"的一生;想要不朽,以后做「墓碑/传承」再说。
+
+**【待编译验证】新增**:`NbtElement.STRING_TYPE` 常量 + `NbtList.getString(int)`(Yarn 1.21.1 标准 NBT API,风险很低)、`Entity#getName().getString()`(拿怪物显示名,风险低)。

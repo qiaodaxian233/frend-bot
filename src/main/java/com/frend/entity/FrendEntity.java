@@ -94,6 +94,9 @@ public class FrendEntity extends PathAwareEntity {
     /** v0.3 战斗:持引用以便 onDamaged 通知支援。 */
     private FrendCombatGoal combatGoal;
 
+    /** v0.4 长期记忆:相识天数/击杀/救主/干活量/大事记,随 NBT 持久化。 */
+    private final FrendMemory memory = new FrendMemory();
+
     public FrendEntity(EntityType<? extends PathAwareEntity> type, World world) {
         super(type, world);
         this.setPersistent(); // 不因玩家远离而消失
@@ -125,7 +128,12 @@ public class FrendEntity extends PathAwareEntity {
 
     // ===================== 主人 / 模式 / 家 =====================
 
-    public void setOwner(PlayerEntity player) { this.ownerUuid = player.getUuid(); }
+    public void setOwner(PlayerEntity player) {
+        this.ownerUuid = player.getUuid();
+        memory.initFirstMet(this.getWorld().getTime()); // 相识时刻只记第一次
+    }
+
+    public FrendMemory getMemory() { return memory; }
 
     public UUID getOwnerUuid() { return ownerUuid; }
 
@@ -491,6 +499,8 @@ public class FrendEntity extends PathAwareEntity {
         NbtCompound invTag = new NbtCompound();
         Inventories.writeNbt(invTag, list, this.getWorld().getRegistryManager());
         nbt.put("FrendInventory", invTag);
+        // v0.4 长期记忆
+        nbt.put("FrendMemory", memory.toNbt());
     }
 
     @Override
@@ -511,6 +521,9 @@ public class FrendEntity extends PathAwareEntity {
             DefaultedList<ItemStack> list = DefaultedList.ofSize(inventory.size(), ItemStack.EMPTY);
             Inventories.readNbt(nbt.getCompound("FrendInventory"), list, this.getWorld().getRegistryManager());
             for (int i = 0; i < inventory.size(); i++) inventory.setStack(i, list.get(i));
+        }
+        if (nbt.contains("FrendMemory")) {
+            memory.fromNbt(nbt.getCompound("FrendMemory"));
         }
     }
 }

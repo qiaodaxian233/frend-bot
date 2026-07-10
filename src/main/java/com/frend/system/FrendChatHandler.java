@@ -49,6 +49,9 @@ public final class FrendChatHandler {
     private static final String[] KEY_COMBAT_ON  = {"保护我", "打怪", "战斗模式", "去打", "帮我打", "冲啊", "攻击"};
     private static final String[] KEY_COMBAT_OFF = {"别打了", "住手", "不用打", "停止攻击", "收剑"};
 
+    // ===== v0.4 记忆关键词 =====
+    private static final String[] KEY_MEMORY = {"还记得", "记得吗", "认识多久", "多少天", "战绩", "杀了多少", "干了多少", "回忆"};
+
     // ===== 闲聊关键词(规则模式的回话;LLM 模式下作为失败兜底) =====
     private static final String[] KEY_GREET  = {"你好", "在吗", "嗨", "hello", "hi"};
     private static final String[] KEY_THANKS = {"谢谢", "辛苦", "thank"};
@@ -154,6 +157,8 @@ public final class FrendChatHandler {
         } else if (matches(text, KEY_COMBAT_OFF)) {
             FrendConfig.get().combatEnabled = false;
             frend.sayDelayed("好,我不动手了,你说打才打。");
+        } else if (matches(text, KEY_MEMORY)) {
+            frend.sayDelayed(frend.getMemory().recapLine(frend.getWorld().getTime()));
         } else if (matches(text, KEY_STATUS)) {
             frend.sayDelayed(statusLine(frend));
         } else {
@@ -215,6 +220,7 @@ public final class FrendChatHandler {
                 + "你没有能力执行任何游戏操作;主人要是想让你做事,提醒他说关键词:跟我来/停下/过来/回家/报告状态。"
                 + "你当前状态:血量 " + (int) frend.getHealth() + "/" + (int) frend.getMaxHealth()
                 + "," + mode + ",现在是" + (day ? "白天" : "夜里") + "。"
+                + frend.getMemory().llmSummary(frend.getWorld().getTime()) // v0.4:共同经历入上下文,让闲聊有"往事"
                 + (cfg.llmPersonaExtra == null || cfg.llmPersonaExtra.isBlank() ? "" : "附加设定:" + cfg.llmPersonaExtra);
     }
 
@@ -233,7 +239,7 @@ public final class FrendChatHandler {
                     + frend.getHomePos().getY() + " " + frend.getHomePos().getZ()
                 : "还没定家";
         return "血量 " + (int) frend.getHealth() + "/" + (int) frend.getMaxHealth()
-                + ",当前" + modeName + ",家:" + home + "。";
+                + ",当前" + modeName + ",家:" + home + "。" + frend.getMemory().statusBrief();
     }
 
     private static boolean matches(String text, String[] keys) {

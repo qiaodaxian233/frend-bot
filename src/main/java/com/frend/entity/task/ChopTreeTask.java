@@ -78,6 +78,7 @@ public class ChopTreeTask extends FrendTask {
         if (breakTick(target, perBlock)) {
             tree.remove(0);
             chopped++;
+            frend.getMemory().addChopped(1); // v0.4 记忆埋点
             if (!axe.isEmpty()) frend.damageTool(axe);
         }
         return true;
