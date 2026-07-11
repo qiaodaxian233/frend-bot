@@ -240,7 +240,16 @@ public class FrendEntity extends PathAwareEntity {
 
     public void setMode(Mode mode) {
         this.mode = mode;
+        if (mode == Mode.STAY) this.guardAnchor = this.getBlockPos().toImmutable(); // v0.20 记岗位
         this.getNavigation().stop();
+    }
+
+    /** v0.20 看家锚点:进入 STAY 时的站位。看家清怪绕它扫、打完回它站岗。
+     *  不落盘:重载后没锚就 lazy 用当前脚下——反正 STAY 的它就站在岗上。 */
+    private BlockPos guardAnchor = null;
+
+    public BlockPos getGuardAnchor() {
+        return guardAnchor != null ? guardAnchor : this.getBlockPos();
     }
 
     public BlockPos getHomePos() { return homePos; }
@@ -349,6 +358,8 @@ public class FrendEntity extends PathAwareEntity {
      * 已验证:ItemTags 在 net.minecraft.registry.tag 包(不是 item 包)。
      */
     public void autoEquipBestWeapon() {
+        // v0.20 钓鱼中别抢竿:不然每 40 tick 一次的换剑会把手里的鱼竿换回包里
+        if (currentTask instanceof com.frend.entity.task.FishTask) return;
         ItemStack main = this.getMainHandStack();
         // 主手已有剑/斧/弓,不动(弓是 v0.8 CombatGoal 按距离换上去的,别抢)
         if (!main.isEmpty()

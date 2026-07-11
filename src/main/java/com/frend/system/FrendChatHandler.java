@@ -48,6 +48,13 @@ public final class FrendChatHandler {
     // v0.16 合成
     private static final String[] KEY_CRAFT   = {"做工具", "造工具", "打工具", "合成工具", "craft"};
     private static final String[] KEY_TORCHC  = {"做火把", "搓火把", "合成火把"};
+    // v0.20 过日子全家桶
+    private static final String[] KEY_FARM  = {"种田", "收庄稼", "收麦子", "收菜", "farm"};
+    private static final String[] KEY_FISH  = {"钓鱼", "去钓鱼", "fish"};
+    private static final String[] KEY_SMELT = {"烧铁", "炼铁", "开炉", "烧一炉", "smelt"};
+    // "不用看家"含"看家",OFF 必须先匹配
+    private static final String[] KEY_GUARD_OFF = {"不用看家", "别看家", "不用守"};
+    private static final String[] KEY_GUARD_ON  = {"看家", "守着家", "守家", "看好家", "guard"};
     private static final String[] KEY_DEPOSIT = {"存箱子", "回家存", "存东西", "去存", "deposit"};
     private static final String[] KEY_WORKSTOP = {"收工", "别干了", "别挖了", "别砍了", "休息吧"};
 
@@ -191,6 +198,19 @@ public final class FrendChatHandler {
         } else if (matches(text, KEY_TORCHC)) {
             frend.startTask(new com.frend.entity.task.CraftTask(frend, com.frend.entity.task.CraftTask.Goal.TORCHES),
                     "搓火把喽,有煤就快。");
+        } else if (matches(text, KEY_FARM)) {
+            frend.startTask(new com.frend.entity.task.FarmTask(frend), "好,收庄稼去——熟的收,青的留,种子补回去。");
+        } else if (matches(text, KEY_FISH)) {
+            frend.startTask(new com.frend.entity.task.FishTask(frend), "钓鱼喽……你也来?坐着发会儿呆挺好。");
+        } else if (matches(text, KEY_SMELT)) {
+            frend.startTask(new com.frend.entity.task.SmeltTask(frend), "开炉!有啥烧啥。");
+        } else if (matches(text, KEY_GUARD_OFF)) {
+            FrendConfig.get().guardWhenStay = false;
+            frend.sayDelayed("行,那我站岗只看不动手——真有怪打我我还是要还手的。");
+        } else if (matches(text, KEY_GUARD_ON)) {
+            frend.setMode(FrendEntity.Mode.STAY);
+            FrendConfig.get().guardWhenStay = true;
+            frend.sayDelayed("放心去吧,家有我盯着——摸进来的怪一只都别想走。");
         } else if (matches(text, KEY_ORE)) {
             frend.startTask(new com.frend.entity.task.MineTask(frend, com.frend.entity.task.MineTask.Kind.ORE), "找煤铁去,有露头的都归咱。");
         } else if (matches(text, KEY_WORKSTOP) && frend.isWorking()) {
@@ -358,6 +378,15 @@ public final class FrendChatHandler {
             case "deep" -> frend.startTask(new com.frend.entity.task.TunnelTask(frend, com.frend.entity.task.TunnelTask.Kind.DEEP), orDefault(say, "下矿喽!"));
             case "craft" -> frend.startTask(new com.frend.entity.task.CraftTask(frend, com.frend.entity.task.CraftTask.Goal.TOOLS), orDefault(say, "我鼓捣两件家伙。"));
             case "torch" -> frend.startTask(new com.frend.entity.task.CraftTask(frend, com.frend.entity.task.CraftTask.Goal.TORCHES), orDefault(say, "搓火把喽。"));
+            case "farm" -> frend.startTask(new com.frend.entity.task.FarmTask(frend), orDefault(say, "收庄稼去,熟的收青的留。"));
+            case "fish" -> frend.startTask(new com.frend.entity.task.FishTask(frend), orDefault(say, "钓鱼喽,一起发会儿呆?"));
+            case "smelt" -> frend.startTask(new com.frend.entity.task.SmeltTask(frend), orDefault(say, "开炉!有啥烧啥。"));
+            case "guard_on" -> {
+                frend.setMode(FrendEntity.Mode.STAY);
+                FrendConfig.get().guardWhenStay = true;
+                sayOr(frend, say, "家有我盯着,放心去。");
+            }
+            case "guard_off" -> { FrendConfig.get().guardWhenStay = false; sayOr(frend, say, "行,站岗只看不动手。"); }
             case "stop" -> {
                 if (frend.isWorking()) frend.stopTask(orDefault(say, "收工!"));
                 else sayOr(frend, say, "我本来也没在忙,咋啦?");
@@ -409,6 +438,7 @@ public final class FrendChatHandler {
                       + "intent 必须从这张清单里选,选不出就用 none(表示纯聊天):"
                       + "follow=跟着走/stay=原地等着/come=到我这来/home=回家/deposit=回家存箱子/"
                       + "chop=砍树/stone=挖石头/ore=找矿/tunnel=挖隧道/deep=下矿挖钻石/craft=做工具/torch=搓火把/"
+                      + "farm=收庄稼种田/fish=钓鱼/smelt=开炉烧矿炼铁/guard_on=看家守家/guard_off=不用看家/"
                       + "stop=停下手头的活/combat_on=开打保护对方/combat_off=别打了/auto_on=自由活动/auto_off=听指挥/"
                       + "status=报告状态/memory=回忆往事/none=只是聊天。"
                       + "say 是你嘴上的回应,口语一句话。除了这一行 JSON 什么都别输出。"

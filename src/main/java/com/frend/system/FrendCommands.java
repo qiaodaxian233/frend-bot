@@ -79,8 +79,31 @@ public final class FrendCommands {
                                         f.startTask(new com.frend.entity.task.TunnelTask(f, com.frend.entity.task.TunnelTask.Kind.DEEP), "下矿喽!挖楼梯下到矿层再直着掏,跟我后面别掉坑里。"))))
                                 .then(CommandManager.literal("deposit").executes(ctx -> forEachOwned(ctx, f ->
                                         f.startTask(new com.frend.entity.task.DepositTask(f), "好,我回家把东西存箱子里。"))))
+                                .then(CommandManager.literal("farm").executes(ctx -> forEachOwned(ctx, f ->
+                                        f.startTask(new com.frend.entity.task.FarmTask(f), "好,收庄稼去——熟的收,青的留,种子补回去。"))))
+                                .then(CommandManager.literal("fish").executes(ctx -> forEachOwned(ctx, f ->
+                                        f.startTask(new com.frend.entity.task.FishTask(f), "钓鱼喽……你也来?坐着发会儿呆挺好。"))))
+                                .then(CommandManager.literal("smelt").executes(ctx -> forEachOwned(ctx, f ->
+                                        f.startTask(new com.frend.entity.task.SmeltTask(f), "开炉!有啥烧啥。"))))
                                 .then(CommandManager.literal("stop").executes(ctx -> forEachOwned(ctx, f ->
                                         f.stopTask("收工!"))))
+                        )
+
+                        // v0.20 看家
+                        .then(CommandManager.literal("guard")
+                                .then(CommandManager.literal("on").executes(ctx -> {
+                                    FrendConfig.get().guardWhenStay = true;
+                                    ctx.getSource().sendFeedback(() -> net.minecraft.text.Text.literal("[frend] 看家已开启(待命时主动清剿岗位附近的怪)"), false);
+                                    return forEachOwned(ctx, f -> {
+                                        f.setMode(com.frend.entity.FrendEntity.Mode.STAY);
+                                        f.sayDelayed("放心去吧,家有我盯着。");
+                                    });
+                                }))
+                                .then(CommandManager.literal("off").executes(ctx -> {
+                                    FrendConfig.get().guardWhenStay = false;
+                                    ctx.getSource().sendFeedback(() -> net.minecraft.text.Text.literal("[frend] 看家已关闭(待命只自卫)"), false);
+                                    return forEachOwned(ctx, f -> f.sayDelayed("行,站岗只看不动手。"));
+                                }))
                         )
 
                         // v0.3 战斗

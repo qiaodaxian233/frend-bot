@@ -14,6 +14,9 @@ import net.minecraft.registry.tag.ItemTags;
  * <p>决策阶梯(每个决策周期从上往下,命中即止):
  * <ol>
  *   <li><b>包快满了</b> → 自己回家存箱子(家在本维度才去);FOLLOW 模式不擅自离队,只口头建议;</li>
+ *   <li>v0.16/v0.20 <b>自给自足链</b>:缺工具/可升级 → 自己造;火把见底 → 自己搓;
+ *       攒了生矿 → 开炉烧;庄稼熟了 → 顺手收一茬补种(<b>钓鱼刻意不进阶梯</b>:
+ *       钓鱼是情调不是家务,等朋友开口一起去);</li>
  *   <li><b>有斧头</b> → 附近砍树;</li>
  *   <li><b>有镐子</b> → 附近凿石头;</li>
  *   <li><b>啥工具都没有</b> → 提一嘴"给我把工具"(长冷却,不刷屏)。</li>
@@ -134,6 +137,18 @@ public class FrendAutonomy {
             frend.startTask(new com.frend.entity.task.CraftTask(frend,
                             com.frend.entity.task.CraftTask.Goal.TORCHES),
                     "火把见底了,搓一把备着。");
+            return;
+        }
+        // 1.6) v0.20 铁器链:攒了生铁有燃料 → 开炉去烧(烧完材料到位,升级铁器由 CraftTask 自然接手)
+        if (c.selfSufficient && com.frend.entity.task.SmeltTask.shouldSmelt(frend)) {
+            frend.startTask(new com.frend.entity.task.SmeltTask(frend),
+                    "攒了些生矿,我去开炉烧一炉——铁家伙不远了。");
+            return;
+        }
+        // 1.7) v0.20 顺手收庄稼:附近有熟透的 → 收一茬补种(只动熟的,青苗一根不碰)
+        if (c.autonomyFarm && com.frend.entity.task.FarmTask.hasMatureCropNearby(frend)) {
+            frend.startTask(new com.frend.entity.task.FarmTask(frend),
+                    "地里庄稼熟了,我去收一茬,种子给你补回去。");
             return;
         }
 

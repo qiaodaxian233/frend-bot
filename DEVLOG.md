@@ -590,3 +590,46 @@ FabricLoader.getConfigDir、NbtCompound#getKeys、Entity#random 类型为 math.r
 
 **【待编译验证】新增**:RegistryEntry#getKey(返回 Optional<RegistryKey>)、Registries.BLOCK.getId、
 LinkedHashMap/LinkedHashSet(纯 JDK 零风险)。config v16→v17 knowledgeEnabled。
+
+---
+
+## 里程碑 21 / v0.20 — 过日子全家桶(作者点单:看家/铁器链/主动升级/种田/钓鱼)
+
+五件一次上,全是"伙伴会过日子"的拼图。三个新任务类 + 战斗/合成/决策/聊天/指令五处接线。
+
+**看家模式(STAY 即看家,config guardWhenStay 默认开)**:进 STAY 记锚点(guardAnchor,不落盘,
+重启 lazy 用当前脚下)→ FrendCombatGoal 加分支:绕锚点 guardRange(16)格扫敌主动出击;
+**拴绳** guardRange*1.75 出圈放弃追击("不追了……家要紧");打完 stop() 离岗 >3 格自动
+navigateSmart 回岗。咋呼话("家门口撒野?!")两分钟去重。`/frend guard on|off`(on 顺手 setMode
+STAY),聊天"看家/守着家"——注意 **KEY_GUARD_OFF 必须先于 ON 匹配**("不用看家"含"看家",老坑同款)。
+
+**铁器链(SmeltTask,真熔炉不虚拟)**:状态机 FIND→GO→LOAD→WAIT→COLLECT。没炉子且有 8 圆石
+**自己盘一个**摆脚边实地;**不动别人的炉子**(输入/产出槽非空=有人在用,跳过);原料优先
+RAW_IRON>RAW_GOLD>RAW_COPPER;没煤有原木先烧一炉**木炭救急**(charcoalMode,火把链闭环);
+**燃料单一制**(炉燃料槽只有一格,煤板混装是修过的 bug):有煤按 1 顶 8,否则全木板按 2 板顶 3,
+火力不够按火力缩批退料;WAIT 以产出判断+超时兜底(200*loaded+600);收尾 reclaim 槽 0/1
+还炉于民。决策阶梯 1.6 接入(生矿≥4 且燃料链有戏才动)。
+
+**主动工具升级(CraftTask 重写为档位制)**:木0/石1/铁2(金按石算)/钻石以上3 不折腾;
+bestOwnedTier(与 findUsableTool 同口径留耐久) vs bestCraftableTier,**craftable>owned 即触发**
+——不再等报废,有更好的材料就提前换代("鸟枪换炮!");铁器 3 锭+2 棍,配比统一 3 材+2 棍
+(镐/斧同方,剑 2+1 的差异抹平换代码减半,已知取舍)。
+
+**FarmTask(种田)**:只收熟的(CropBlock#isMature),青苗一根不碰;四大田(麦/胡萝卜/土豆/甜菜);
+**收一茬补一茬**:先查距离再扣种子(顺序反了会白扣,修过);暂缺种子的坑进 pendingReplant 欠账队列
+(posLong+作物 rawId+过期时限),过期计 missedReplant 收工如实汇报;hasMatureCropNearby(12 格)
+给决策阶梯 1.7(config autonomyFarm)。耕地被踩坏是原版机制,已知小账不专门规避。
+
+**FishTask(钓鱼,模拟竿)**:原版 FishingBobberEntity 构造绑死玩家,非玩家实体用不了真浮漂——
+真走到水边(FluidTags.WATER+头顶露天)、真拿竿、真等咬钩(10~30s 随机)、竿真掉耐久断了收工;
+渔获照抄原版口径 85% 鱼(鳕60/鲑25/河豚13/热带2)/10% 垃圾/5% 小宝贝(鹦鹉螺壳/命名牌/鞍,
+**刻意不给附魔书**——模拟竿钓出附魔书像作弊);挨打立刻收竿;钓满 fishMaxCatches(8)收工;
+autoEquipBestWeapon 对钓鱼中直接 return(防 40tick 换剑抢竿,rodSlot 主手优先修过越界)。
+**钓鱼刻意不进决策阶梯**:是情调不是家务,只应点单("去钓鱼")。
+
+config v17→v18:guardWhenStay/guardRange/smeltBatchMax/autonomyFarm/fishWaitMin~MaxSeconds/
+fishMaxCatches。意图白名单 19→24(farm/fish/smelt/guard_on/guard_off),执行同源红线照旧。
+
+**【待编译验证】新增**:AbstractFurnaceBlockEntity(直接操作槽 0原料/1燃料/2产出)、
+CropBlock#isMature 可见性、Block.getRawIdFromState/getStateFromRawId、
+SoundEvents.ENTITY_FISHING_BOBBER_THROW/SPLASH 命名。

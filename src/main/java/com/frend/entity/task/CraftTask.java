@@ -24,8 +24,9 @@ import java.util.function.Predicate;
  *
  * <p>目标:
  * <ul>
- *   <li><b>TOOLS</b>:按 镐→斧→剑 补齐缺的工具;有 3 圆石优先石器,没有就先做木器
- *       (木镐是自举的钥匙:撸树→木镐→凿石→石器);</li>
+ *   <li><b>TOOLS</b>(v0.20 档位制):镐→斧→剑逐类看"手里最好的一档 vs 材料能出的最高档",
+ *       能更好就打更好的——缺了补、有铁锭升铁器、<b>不等报废主动换代</b>;木 0/石 1/铁 2,
+ *       金按石算、钻石以上不折腾。木镐仍是自举的钥匙:撸树→木镐→凿石→石器→(烧铁)→铁器;</li>
  *   <li><b>TORCHES</b>:煤/木炭 + 棍 → 火把,补到 32 根收手。</li>
  * </ul>
  */
@@ -68,26 +69,29 @@ public class CraftTask extends FrendTask {
 
     // ===================== 每步转换 =====================
 
-    /** 做一步"补齐工具"的转换;没有可做的下一步返回 false。 */
+    /**
+     * v0.20 档位制:木 0 / 石 1 / 铁 2(金器脆,按石器算;钻石以上 3,不折腾)。
+     * 每类工具比较"手里最好的一档"vs"材料能出的最高档",能更好就打一件更好的——
+     * <b>主动升级,不等报废</b>。旧的不扔:留作备用,回头存箱子自然清走。
+     */
     private boolean stepTools() {
         SimpleInventory inv = frend.getInventory();
-        // 缺什么补什么,镐优先(镐是生产资料)
-        if (frend.findUsableTool(ItemTags.PICKAXES).isEmpty()
-                && stepCraftTool(inv, Items.STONE_PICKAXE, Items.WOODEN_PICKAXE, "镐")) return true;
-        if (frend.findUsableTool(ItemTags.AXES).isEmpty()
-                && stepCraftTool(inv, Items.STONE_AXE, Items.WOODEN_AXE, "斧")) return true;
-        if (frend.findUsableTool(ItemTags.SWORDS).isEmpty()
-                && stepCraftTool(inv, Items.STONE_SWORD, Items.WOODEN_SWORD, "剑")) return true;
+        if (stepToolType(inv, ItemTags.PICKAXES, Items.IRON_PICKAXE, Items.STONE_PICKAXE, Items.WOODEN_PICKAXE, "镐")) return true;
+        if (stepToolType(inv, ItemTags.AXES,     Items.IRON_AXE,     Items.STONE_AXE,     Items.WOODEN_AXE,     "斧")) return true;
+        if (stepToolType(inv, ItemTags.SWORDS,   Items.IRON_SWORD,   Items.STONE_SWORD,   Items.WOODEN_SWORD,   "剑")) return true;
         return false;
     }
 
     /**
-     * 朝着"做出这件工具"推进一步(材料链:原木→木板→木棍→成品)。
-     * 这一步做了任何转换都返回 true;这件工具的链条走不通返回 false(调用方试下一件)。
+     * 朝着"这一类工具打一件更好的"推进一步(材料链:原木→木板→木棍→成品)。
+     * 做了任何转换返回 true;这一类不需要/走不通返回 false(调用方看下一类)。
+     * 配比刻意统一 3 材 + 2 棍(剑原版是 2 材 1 棍,这里多收一点,宁多勿少,记录于 DEVLOG)。
      */
-    private boolean stepCraftTool(SimpleInventory inv, Item stoneTier, Item woodTier, String cn) {
-        boolean stone = count(inv, s -> s.isOf(Items.COBBLESTONE) || s.isOf(Items.COBBLED_DEEPSLATE)) >= 3;
-        int planksNeed = stone ? 0 : 3;
+    private boolean stepToolType(SimpleInventory inv, net.minecraft.registry.tag.TagKey<Item> tag,
+                                 Item ironT, Item stoneT, Item woodT, String cn) {
+        int owned = bestOwnedTier(frend, tag);
+        int craftable = bestCraftableTier(inv);
+        if (craftable <= owned) return false; // 手里的不比材料差,不折腾
 
         // 棍不够 → 先备棍(2 板→4 棍);板不够 → 先劈板(1 原木→4 板)
         if (count(inv, s -> s.isOf(Items.STICK)) < 2) {
@@ -101,10 +105,10 @@ public class CraftTask extends FrendTask {
                 give(inv, new ItemStack(Items.OAK_PLANKS, 4));
                 return true;
             }
-            return false; // 连棍都凑不出,这件做不了
+            return false; // 连棍都凑不出,这类做不了
         }
         // 木器还需要 3 板
-        if (planksNeed > 0 && count(inv, s -> s.isIn(ItemTags.PLANKS)) < planksNeed) {
+        if (craftable == 0 && count(inv, s -> s.isIn(ItemTags.PLANKS)) < 3) {
             if (count(inv, s -> s.isIn(ItemTags.LOGS)) >= 1) {
                 take(inv, s -> s.isIn(ItemTags.LOGS), 1);
                 give(inv, new ItemStack(Items.OAK_PLANKS, 4));
@@ -113,18 +117,61 @@ public class CraftTask extends FrendTask {
             return false;
         }
         // 成品
-        if (stone) {
+        if (craftable == 2) {
+            take(inv, s -> s.isOf(Items.IRON_INGOT), 3);
+            take(inv, s -> s.isOf(Items.STICK), 2);
+            give(inv, new ItemStack(ironT));
+            crafted.add("铁" + cn);
+        } else if (craftable == 1) {
             take(inv, s -> s.isOf(Items.COBBLESTONE) || s.isOf(Items.COBBLED_DEEPSLATE), 3);
             take(inv, s -> s.isOf(Items.STICK), 2);
-            give(inv, new ItemStack(stoneTier));
+            give(inv, new ItemStack(stoneT));
             crafted.add("石" + cn);
         } else {
             take(inv, s -> s.isIn(ItemTags.PLANKS), 3);
             take(inv, s -> s.isOf(Items.STICK), 2);
-            give(inv, new ItemStack(woodTier));
+            give(inv, new ItemStack(woodT));
             crafted.add("木" + cn);
         }
         return true;
+    }
+
+    /** 材料能出的最高档(粗判:成品材料够就算,棍链由步进函数如实处理)。 */
+    private static int bestCraftableTier(SimpleInventory inv) {
+        boolean stickChain = count(inv, s -> s.isOf(Items.STICK)) >= 2
+                || count(inv, s -> s.isIn(ItemTags.PLANKS)) >= 2
+                || count(inv, s -> s.isIn(ItemTags.LOGS)) >= 1;
+        if (!stickChain) return -1;
+        if (count(inv, s -> s.isOf(Items.IRON_INGOT)) >= 3) return 2;
+        if (count(inv, s -> s.isOf(Items.COBBLESTONE) || s.isOf(Items.COBBLED_DEEPSLATE)) >= 3) return 1;
+        if (count(inv, s -> s.isIn(ItemTags.PLANKS)) + count(inv, s -> s.isIn(ItemTags.LOGS)) * 4 >= 3) return 0;
+        return -1;
+    }
+
+    /** 这一类工具手里最好的一档(-1 = 一件能用的都没有;耐久见底的不算,和 findUsableTool 同口径)。 */
+    static int bestOwnedTier(FrendEntity f, net.minecraft.registry.tag.TagKey<Item> tag) {
+        int reserve = com.frend.FrendConfig.get().toolReserveDurability;
+        int best = -1;
+        ItemStack mh = f.getMainHandStack();
+        if (!mh.isEmpty() && mh.isIn(tag) && usable(mh, reserve)) best = Math.max(best, tierOf(mh.getItem()));
+        SimpleInventory inv = f.getInventory();
+        for (int i = 0; i < inv.size(); i++) {
+            ItemStack s = inv.getStack(i);
+            if (!s.isEmpty() && s.isIn(tag) && usable(s, reserve)) best = Math.max(best, tierOf(s.getItem()));
+        }
+        return best;
+    }
+
+    private static boolean usable(ItemStack s, int reserve) {
+        return !s.isDamageable() || s.getMaxDamage() - s.getDamage() > reserve;
+    }
+
+    private static int tierOf(Item i) {
+        if (i == Items.WOODEN_PICKAXE || i == Items.WOODEN_AXE || i == Items.WOODEN_SWORD) return 0;
+        if (i == Items.STONE_PICKAXE || i == Items.STONE_AXE || i == Items.STONE_SWORD
+                || i == Items.GOLDEN_PICKAXE || i == Items.GOLDEN_AXE || i == Items.GOLDEN_SWORD) return 1; // 金器脆,当石器
+        if (i == Items.IRON_PICKAXE || i == Items.IRON_AXE || i == Items.IRON_SWORD) return 2;
+        return 3; // 钻石/下界合金,已经很好,不折腾
     }
 
     /** 做一步"搓火把"的转换。 */
@@ -154,18 +201,13 @@ public class CraftTask extends FrendTask {
 
     // ===================== 给自主决策用的静态判断 =====================
 
-    /** 缺工具且材料链走得通(粗判,做不完任务会自己如实收工)。 */
+    /** v0.20 缺工具<b>或有升级机会</b>且材料链走得通(粗判,做不完任务会自己如实收工)。 */
     public static boolean shouldCraftTools(FrendEntity f) {
-        boolean missing = f.findUsableTool(ItemTags.PICKAXES).isEmpty()
-                || f.findUsableTool(ItemTags.AXES).isEmpty()
-                || f.findUsableTool(ItemTags.SWORDS).isEmpty();
-        if (!missing) return false;
-        SimpleInventory inv = f.getInventory();
-        int logs = count(inv, s -> s.isIn(ItemTags.LOGS));
-        int planks = count(inv, s -> s.isIn(ItemTags.PLANKS));
-        int sticks = count(inv, s -> s.isOf(Items.STICK));
-        // 木头当量够出一件最小的木器(3 板+2 棍 ≈ 2 原木)就值得开工
-        return logs * 4 + planks + sticks >= 5 && (logs > 0 || planks >= 2 || sticks >= 2);
+        int craftable = bestCraftableTier(f.getInventory());
+        if (craftable < 0) return false;
+        return craftable > bestOwnedTier(f, ItemTags.PICKAXES)
+                || craftable > bestOwnedTier(f, ItemTags.AXES)
+                || craftable > bestOwnedTier(f, ItemTags.SWORDS);
     }
 
     /** 火把见底且有煤有木头链。 */

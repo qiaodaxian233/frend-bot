@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 17;
+    public static final int CURRENT_CONFIG_VERSION = 18;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -211,6 +211,20 @@ public class FrendConfig {
     // ===== v0.19 知识库 =====
     /** 见识与教训:打过什么/挖过什么/去过哪终身累积(随灵魂跨档);被苦力怕炸多了会自己学乖离远点。 */
     public boolean knowledgeEnabled = true;
+
+    // ===== v0.20 过日子全家桶:看家 / 铁器链 / 主动升级 / 种田 / 钓鱼 =====
+    /** 看家:STAY 待命时主动清剿岗位附近摸进来的怪(以进入待命时的站位为锚点),打完溜达回岗。 */
+    public boolean guardWhenStay = true;
+    /** 看家警戒半径(格,绕锚点扫,不绕自己——追怪漂移后扫描圈不能跟着漂)。 */
+    public double guardRange = 16.0;
+    /** 一炉最多烧多少个(真熔炉真火候,10 秒一个,贪多站一下午)。 */
+    public int smeltBatchMax = 16;
+    /** 自主行动顺手收庄稼(只收熟透的,青苗一根不碰,收完补种)。 */
+    public boolean autonomyFarm = true;
+    /** 钓鱼:一口咬钩等 min~max 秒(原版手感);一竿之约最多钓这么多条就收。 */
+    public int fishWaitMinSeconds = 10;
+    public int fishWaitMaxSeconds = 30;
+    public int fishMaxCatches = 8;
 
     // ===== v0.14 挖矿进修(Baritone 思路) =====
     /** 追脉上限:一条矿脉最多连挖这么多块就收手,防止把直巷挖成蚁穴。 */

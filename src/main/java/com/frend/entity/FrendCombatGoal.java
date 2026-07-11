@@ -68,6 +68,12 @@ public class FrendCombatGoal extends Goal {
     /** 走位方向(偶尔换边,别绕成钟摆)。 */
     private boolean strafeLeft = true;
 
+    // ===== v0.20 看家 =====
+    /** 本次目标是看家扫出来的(拴绳 + 打完回岗只对看家生效)。 */
+    private boolean guarding = false;
+    /** 看家咋呼去重(按实体 age,Goal 不激活也不会漏减)。 */
+    private int lastGuardLineAge = -99999;
+
     public FrendCombatGoal(FrendEntity frend) {
         this.frend = frend;
         setControls(EnumSet.of(Control.MOVE, Control.LOOK));
@@ -137,13 +143,28 @@ public class FrendCombatGoal extends Goal {
             return true;
         }
 
-        // 只在跟随模式主动清怪;WORK 模式干活时也保护自己
+        // v0.20 看家:STAY 待命也动手——绕<b>锚点</b>扫(不绕自己:追怪漂移后扫描圈不能跟着漂),
+        // 摸进警戒圈的怪主动清剿。FOLLOW/WORK 照旧绕自己扫。
         FrendEntity.Mode mode = frend.getMode();
+        if (mode == FrendEntity.Mode.STAY) {
+            if (!c.guardWhenStay) return false;
+            target = findHostileIn(new Box(frend.getGuardAnchor()).expand(c.guardRange));
+            defendingOwner = false;
+            guarding = target != null;
+            if (guarding && frend.age - lastGuardLineAge > 20 * 120) { // 两分钟最多咋呼一次
+                lastGuardLineAge = frend.age;
+                frend.sayDelayed("哪来的不长眼的,敢摸咱家门口!");
+            }
+            return target != null;
+        }
+
+        // 只在跟随模式主动清怪;WORK 模式干活时也保护自己
         if (mode != FrendEntity.Mode.FOLLOW && mode != FrendEntity.Mode.WORK) return false;
 
         // 自动扫描附近 HostileEntity
         target = findNearestHostile(c.combatRange);
         defendingOwner = false;
+        guarding = false;
         return target != null;
     }
 
@@ -153,6 +174,14 @@ public class FrendCombatGoal extends Goal {
         if (!c.combatEnabled) return false;
         if (isInRetreating()) return false;
         if (target == null || !target.isAlive()) return false;
+        // v0.20 看家拴绳:追出岗位太远就放它走,回岗要紧——不然一只逃跑的怪能把守卫钓到天边
+        if (guarding) {
+            var a = frend.getGuardAnchor();
+            double leash = c.guardRange * 1.75;
+            if (frend.squaredDistanceTo(a.getX() + 0.5, a.getY() + 0.5, a.getZ() + 0.5) > leash * leash) {
+                return false;
+            }
+        }
         // 太远了放弃
         return frend.squaredDistanceTo(target) <= (c.combatRange * 3.0) * (c.combatRange * 3.0);
     }
@@ -166,6 +195,17 @@ public class FrendCombatGoal extends Goal {
         defendingOwner = false;
         bowDrawTicks = 0;
         critPending = false; // v0.14 跳劈状态清零,打断后不残留
+        // v0.20 看家收尾:打完(或放弃追击)溜达回岗,别越守越偏
+        if (guarding) {
+            guarding = false;
+            if (frend.getMode() == FrendEntity.Mode.STAY) {
+                var a = frend.getGuardAnchor();
+                if (frend.squaredDistanceTo(a.getX() + 0.5, a.getY() + 0.5, a.getZ() + 0.5) > 9) {
+                    frend.navigateSmart(a.getX() + 0.5, a.getY() + 0.5, a.getZ() + 0.5,
+                            FrendConfig.get().followSpeed);
+                }
+            }
+        }
         // 举盾状态解除
         if (frend.isBlocking()) frend.clearActiveItem();
     }
@@ -317,9 +357,14 @@ public class FrendCombatGoal extends Goal {
     // ===================== 私有工具 =====================
 
     private LivingEntity findNearestHostile(double range) {
+        return findHostileIn(new Box(frend.getBlockPos()).expand(range));
+    }
+
+    /** 在给定盒子里挑目标(v0.20 抽出来给看家复用:绕锚点扫)。评分逻辑不变。 */
+    private LivingEntity findHostileIn(Box box) {
         List<HostileEntity> hostiles = frend.getWorld().getEntitiesByClass(
                 HostileEntity.class,
-                new Box(frend.getBlockPos()).expand(range),
+                box,
                 e -> e.isAlive() && !e.isSpectator() && isWhitelisted(e) && frend.canSee(e));
         if (hostiles.isEmpty()) return null;
         FrendConfig c = FrendConfig.get();
