@@ -126,7 +126,9 @@ public final class FrendChatHandler {
 
             if (llmBackend && (addressed || smallTalk != null)) {
                 frend.rememberChat("user", raw);
-                llmChat(frend, sender, raw, smallTalk);
+                // v0.17 意图解析开着 → 走"听懂人话"链路;关着 → 纯聊天(老行为)
+                if (FrendConfig.get().llmIntentEnabled) llmIntentChat(frend, sender, raw, smallTalk);
+                else llmChat(frend, sender, raw, smallTalk);
             } else if (smallTalk != null) {
                 frend.rememberChat("user", raw);
                 frend.sayDelayed(smallTalk);
@@ -263,8 +265,122 @@ public final class FrendChatHandler {
                 }));
     }
 
+    /**
+     * v0.17 意图解析版 LLM 调用(还 v0.4 设计文档的账:"LLM 只产出意图,执行走白名单")。
+     * <b>红线</b>:模型输出只被当成两样东西——一个白名单里的意图词 + 一句嘴上的话;
+     * 白名单外的意图一律视为 none(纯聊天);JSON 解析不出来就把整段当聊天文本。
+     * 模型永远没有直接触碰游戏状态的通道,执行统一走 executeIntent(和关键词同一套调用)。
+     */
+    private static void llmIntentChat(FrendEntity frend, ServerPlayerEntity sender, String raw, String fallback) {
+        if (!frend.tryStartLlm()) {
+            if (fallback != null) frend.sayDelayed(fallback);
+            return;
+        }
+        MinecraftServer server = sender.getServerWorld().getServer();
+        List<String[]> history = frend.chatHistorySnapshot();
+        if (!history.isEmpty()) history.remove(history.size() - 1);
+
+        FrendLlmClient.chat(persona(frend, sender, true), history, raw).whenComplete((reply, err) ->
+                server.execute(() -> {
+                    frend.finishLlm();
+                    if (!frend.isAlive()) return;
+                    if (err != null || reply == null || reply.isBlank()) {
+                        if (err != null) Frend.LOGGER.warn("[frend] LLM 意图请求失败,退回规则回复: {}", err.toString());
+                        frend.sayDelayed(fallback != null ? fallback : pick(R_FALLBACK));
+                        return;
+                    }
+                    String[] parsed = parseIntentJson(reply);
+                    if (parsed == null) { // 没按格式来?那就当它在聊天,原文照说(清洗后)
+                        frend.sayDelayed(FrendLlmClient.sanitize(reply));
+                        return;
+                    }
+                    String say = parsed[1];
+                    int cap = FrendConfig.get().llmMaxReplyChars;
+                    if (say.length() > cap) say = say.substring(0, cap);
+                    boolean executed = executeIntent(frend, sender, parsed[0], say);
+                    if (!executed && !say.isBlank()) {
+                        frend.sayDelayed(say); // none/没听懂的意图 = 纯聊天
+                    }
+                }));
+    }
+
+    /** 从模型回复里抠出 {"intent":..,"say":..};抠不出返回 null。 */
+    private static String[] parseIntentJson(String reply) {
+        try {
+            String t = reply.trim();
+            int a = t.indexOf('{');
+            int b = t.lastIndexOf('}');
+            if (a < 0 || b <= a) return null;
+            com.google.gson.JsonObject o = com.google.gson.JsonParser
+                    .parseString(t.substring(a, b + 1)).getAsJsonObject();
+            String intent = o.has("intent") ? o.get("intent").getAsString().trim().toLowerCase(Locale.ROOT) : "none";
+            String say = o.has("say") ? o.get("say").getAsString() : "";
+            return new String[]{intent, say};
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * v0.17 白名单意图执行器——和 handleCommand 的关键词分支<b>同一套调用</b>,一行不多。
+     * say 是模型嘴上那句话,执行成功时代替罐头台词说出来(有性格);
+     * status/memory 例外:回真实数据,不让模型编。返回 false = 意图不在白名单/none,调用方按聊天处理。
+     */
+    private static boolean executeIntent(FrendEntity frend, ServerPlayerEntity sender, String intent, String say) {
+        switch (intent) {
+            case "follow" -> { frend.setMode(FrendEntity.Mode.FOLLOW); sayOr(frend, say, pick(R_FOLLOW)); }
+            case "stay" -> { frend.setMode(FrendEntity.Mode.STAY); sayOr(frend, say, pick(R_STAY)); }
+            case "come" -> {
+                frend.setMode(FrendEntity.Mode.FOLLOW);
+                frend.getNavigation().startMovingTo(sender, FrendConfig.get().followSpeed);
+                sayOr(frend, say, pick(R_COME));
+            }
+            case "home" -> {
+                if (!frend.hasHome()) frend.sayDelayed(pick(R_HOME_NONE));
+                else if (!frend.isHomeInThisDimension()) frend.sayDelayed(pick(R_HOME_FAR));
+                else { frend.setMode(FrendEntity.Mode.GO_HOME); sayOr(frend, say, pick(R_HOME_OK)); }
+            }
+            case "deposit" -> frend.startTask(new com.frend.entity.task.DepositTask(frend), orDefault(say, "好,我回家把东西存箱子里。"));
+            case "chop" -> frend.startTask(new com.frend.entity.task.ChopTreeTask(frend), orDefault(say, "收到,砍树去!"));
+            case "stone" -> frend.startTask(new com.frend.entity.task.MineTask(frend, com.frend.entity.task.MineTask.Kind.STONE), orDefault(say, "好,我去凿点石头。"));
+            case "ore" -> frend.startTask(new com.frend.entity.task.MineTask(frend, com.frend.entity.task.MineTask.Kind.ORE), orDefault(say, "找煤铁去!"));
+            case "tunnel" -> frend.startTask(new com.frend.entity.task.TunnelTask(frend, com.frend.entity.task.TunnelTask.Kind.TUNNEL), orDefault(say, "好,朝前掘进!"));
+            case "deep" -> frend.startTask(new com.frend.entity.task.TunnelTask(frend, com.frend.entity.task.TunnelTask.Kind.DEEP), orDefault(say, "下矿喽!"));
+            case "craft" -> frend.startTask(new com.frend.entity.task.CraftTask(frend, com.frend.entity.task.CraftTask.Goal.TOOLS), orDefault(say, "我鼓捣两件家伙。"));
+            case "torch" -> frend.startTask(new com.frend.entity.task.CraftTask(frend, com.frend.entity.task.CraftTask.Goal.TORCHES), orDefault(say, "搓火把喽。"));
+            case "stop" -> {
+                if (frend.isWorking()) frend.stopTask(orDefault(say, "收工!"));
+                else sayOr(frend, say, "我本来也没在忙,咋啦?");
+            }
+            case "combat_on" -> { FrendConfig.get().combatEnabled = true; sayOr(frend, say, "收到!遇到怪我来解决。"); }
+            case "combat_off" -> { FrendConfig.get().combatEnabled = false; sayOr(frend, say, "好,我不动手了。"); }
+            case "auto_on" -> { FrendConfig.get().autonomyEnabled = true; sayOr(frend, say, "好嘞,我自己看着办。"); }
+            case "auto_off" -> { FrendConfig.get().autonomyEnabled = false; sayOr(frend, say, "收到,没你的话我不乱动。"); }
+            case "status" -> frend.sayDelayed(statusLine(frend));                                    // 真实数据,不让模型编
+            case "memory" -> frend.sayDelayed(frend.getMemory().recapLine(frend.getWorld().getTime())); // 同上
+            default -> { return false; } // none 或白名单外 → 纯聊天
+        }
+        return true;
+    }
+
+    private static void sayOr(FrendEntity frend, String say, String fallback) {
+        frend.sayDelayed(say == null || say.isBlank() ? fallback : say);
+    }
+
+    private static String orDefault(String say, String def) {
+        return say == null || say.isBlank() ? def : say;
+    }
+
     /** 人设 + 当前游戏状态(只给必要信息,回复要求短句口语)。 */
     private static String persona(FrendEntity frend, ServerPlayerEntity owner) {
+        return persona(frend, owner, false);
+    }
+
+    /**
+     * v0.17 双口径人设:intentMode=false 纯聊天(告知自己没有操作能力);
+     * intentMode=true 意图解析(要求只输出一行 JSON,intent 从白名单选,选不出用 none)。
+     */
+    private static String persona(FrendEntity frend, ServerPlayerEntity owner, boolean intentMode) {
         FrendConfig cfg = FrendConfig.get();
         boolean day = frend.getWorld().getTimeOfDay() % 24000L < 13000L;
         String mode = switch (frend.getMode()) {
@@ -278,7 +394,15 @@ public final class FrendChatHandler {
                 + " 是一起冒险的朋友——平辈相处,不是仆人,绝不叫对方主人;可以打趣、可以有小脾气、可以不同意,但重感情、靠得住。"
                 + "用中文口语聊天,像认识很久的老朋友:自然、简短,一句话说完,最多 "
                 + cfg.llmMaxReplyChars + " 个字,不用表情符号,不换行,不提自己是 AI 或模型。"
-                + "你没有能力执行任何游戏操作;朋友想让你搭把手,提醒他说关键词:跟我来/停下/过来/回家/报告状态。"
+                + (intentMode
+                    ? "这条消息如果是在请你做事,判断意图后只输出一行 JSON:{\"intent\":\"xxx\",\"say\":\"你顺口回的一句话\"}。"
+                      + "intent 必须从这张清单里选,选不出就用 none(表示纯聊天):"
+                      + "follow=跟着走/stay=原地等着/come=到我这来/home=回家/deposit=回家存箱子/"
+                      + "chop=砍树/stone=挖石头/ore=找矿/tunnel=挖隧道/deep=下矿挖钻石/craft=做工具/torch=搓火把/"
+                      + "stop=停下手头的活/combat_on=开打保护对方/combat_off=别打了/auto_on=自由活动/auto_off=听指挥/"
+                      + "status=报告状态/memory=回忆往事/none=只是聊天。"
+                      + "say 是你嘴上的回应,口语一句话。除了这一行 JSON 什么都别输出。"
+                    : "你没有能力执行任何游戏操作;朋友想让你搭把手,提醒他说关键词:跟我来/停下/过来/回家/报告状态。")
                 + "你当前状态:血量 " + (int) frend.getHealth() + "/" + (int) frend.getMaxHealth()
                 + "," + mode + ",现在是" + (day ? "白天" : "夜里") + "。"
                 + frend.getMemory().llmSummary(frend.getWorld().getTime()) // v0.4:共同经历入上下文,让闲聊有"往事"

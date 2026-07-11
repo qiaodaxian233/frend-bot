@@ -495,3 +495,32 @@ selfSufficient=false 时行为完全退回 v0.5(含"给我把工具"的抱怨分
 **入口**:全自动为主;聊天"做工具/搓火把"可手动点单。config v13→v14 selfSufficient/nightCaution。
 **【待编译验证】新增**:Items.COBBLED_DEEPSLATE/CHARCOAL/各工具常量、SimpleInventory#addStack
 (已验证)、ItemStack(Item,int) 构造——全常见,风险极低。
+
+---
+
+## 里程碑 18 / v0.17 — LLM 意图解析:还架构层最大的一笔账
+
+HANDOVER 从 v0.4 就承诺"LLM 永不直接控制游戏,只产出意图,执行走白名单技能 DSL"——
+至今 LLM 只会聊天,这条一直是空头支票。这次兑现。
+
+**效果**:开 LLM 模式后不用踩关键词——"累了,先回去吧"→ 它听懂是回家,嘴上还带自己的性格
+("走,回窝!"),然后**走和关键词一模一样的执行代码**。
+
+**红线实现**(三道闸,一道都不能少):
+1. **规则永远先行**:handleCommand 关键词匹配照旧排第一,命中就不进 LLM——指令的确定性通道不动;
+2. **白名单意图**:模型被要求只输出一行 JSON {"intent":"xxx","say":"一句话"},intent 必须出自
+   19 词白名单(follow/stay/come/home/deposit/chop/stone/ore/tunnel/deep/craft/torch/stop/
+   combat_on/combat_off/auto_on/auto_off/status/memory)+none;白名单外一律视为 none=纯聊天;
+3. **执行同源**:executeIntent 的每个分支和 handleCommand 对应分支调用完全相同,一行不多——
+   模型没有任何直接触碰游戏状态的通道。
+
+**细节**:JSON 解析不出来 → 整段当聊天文本清洗后照说(模型不守格式也不炸);say 超长截断到
+llmMaxReplyChars;**status/memory 例外**——回真实数据,不让模型编状态;执行成功时用模型的 say
+代替罐头台词(有性格),say 空则退回罐头。人设拆双口径:纯聊天版仍声明"没有操作能力",
+意图版给白名单说明——persona(frend, owner, intentMode) 重载,老调用零改动。
+
+**解析**:Gson(MC 自带)正经 parse,不搞正则凑合;取首尾花括号截断防模型加料(前后闲话/```fence)。
+config v14→v15 llmIntentEnabled(默认开,仅 openai 后端生效;关掉完全退回 v0.2 纯聊天行为)。
+
+**【待编译验证】新增**:com.google.gson.JsonParser#parseString(MC 自带 Gson 2.10+,FrendLlmClient
+已在用 Gson=低风险)。

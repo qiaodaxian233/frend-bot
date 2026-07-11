@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 14;
+    public static final int CURRENT_CONFIG_VERSION = 15;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -193,6 +193,14 @@ public class FrendConfig {
     public boolean selfSufficient = true;
     /** 天黑收敛:夜里(刷怪时段)不接新活,守着不出去浪;正在干的活不打断。 */
     public boolean nightCaution = true;
+
+    // ===== v0.17 LLM 意图解析(仅 chatBackend=openai 时生效) =====
+    /**
+     * 听懂人话:不踩关键词也行——"累了,先回去吧"它能听懂是回家。
+     * 红线不破:模型只能从白名单里选一个意图词,执行走和关键词完全相同的代码;
+     * 白名单外的任何输出一律当聊天处理,模型永远碰不到游戏。
+     */
+    public boolean llmIntentEnabled = true;
 
     // ===== v0.14 挖矿进修(Baritone 思路) =====
     /** 追脉上限:一条矿脉最多连挖这么多块就收手,防止把直巷挖成蚁穴。 */
