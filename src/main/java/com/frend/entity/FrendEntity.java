@@ -63,6 +63,9 @@ public class FrendEntity extends PathAwareEntity {
     /** 27 格随身背包。 */
     private final SimpleInventory inventory = new SimpleInventory(27);
 
+    /** v0.15 遗物袋:替你捡回的死亡掉落,独立于自己背包(存箱子不会把你的遗物存走),见面全数奉还。 */
+    private final SimpleInventory salvage = new SimpleInventory(45);
+
     /** 家(可空);维度记 Identifier 字符串,如 minecraft:overworld。 */
     private BlockPos homePos = null;
     private String homeDimension = null;
@@ -238,6 +241,32 @@ public class FrendEntity extends PathAwareEntity {
     }
 
     public SimpleInventory getInventory() { return inventory; }
+
+    /** v0.15 收进遗物袋,返回装不下的余量。 */
+    public ItemStack addSalvage(ItemStack stack) { return salvage.addStack(stack); }
+
+    public boolean hasSalvage() {
+        for (int i = 0; i < salvage.size(); i++) if (!salvage.getStack(i).isEmpty()) return true;
+        return false;
+    }
+
+    /** v0.15 遗物全数奉还:直接塞进你的背包,塞不下的落你脚边。 */
+    public void giveSalvageBack(PlayerEntity owner) {
+        int given = 0;
+        for (int i = 0; i < salvage.size(); i++) {
+            ItemStack s = salvage.getStack(i);
+            if (s.isEmpty()) continue;
+            ItemStack copy = s.copy();
+            if (!owner.getInventory().insertStack(copy)) {
+                if (!copy.isEmpty()) owner.dropStack(copy); // 你包满了,剩的放你脚边
+            }
+            salvage.setStack(i, ItemStack.EMPTY);
+            given++;
+        }
+        if (given > 0) {
+            sayDelayed("都在这儿——一样没少,点点?");
+        }
+    }
 
     // ===================== 任务(v0.2 干活) =====================
 
@@ -539,7 +568,7 @@ public class FrendEntity extends PathAwareEntity {
                 currentTask = null;
             } else if (!currentTask.tick()) {
                 currentTask = null;
-                setMode(Mode.STAY);
+                if (mode == Mode.WORK) setMode(Mode.STAY); // v0.15:任务收尾自己换了模式(捡尸后转跟随)就尊重它
             }
         }
 
@@ -572,6 +601,10 @@ public class FrendEntity extends PathAwareEntity {
         if (this.age % 20 == 0) {
             PlayerEntity owner = getOwnerPlayer();
             if (owner != null && owner.isAlive()) {
+                // v0.15 捡回来的遗物,见面全数奉还(4 格内)
+                if (hasSalvage() && this.squaredDistanceTo(owner) < 16.0) {
+                    giveSalvageBack(owner);
+                }
                 // 主人低血:v0.11 朋友不光嘴上提醒——包里有吃的就扔一份过去
                 if (c.ownerLowHealthWarn && owner.getHealth() <= c.lowHealthWarnThreshold
                         && lowHealthWarnCooldown <= 0
@@ -655,7 +688,13 @@ public class FrendEntity extends PathAwareEntity {
                 this.getWorld().getRegistryKey().getValue().toString(),
                 player.getBlockPos(), this.getWorld().getTime());
         deathSpotWarnCooldown = Math.max(deathSpotWarnCooldown, 20 * 120);
-        sayDelayed("不——!你先回来,东西我帮你看着!");
+        // v0.15 说到做到:"东西我帮你看着"不再是空话——赶过去把掉落全收进遗物袋,见面奉还
+        if (FrendConfig.get().collectOwnerDrops) {
+            startTask(new com.frend.entity.task.SalvageTask(this, player.getBlockPos()),
+                    "不——!你先回来,东西我去收,一件都不会丢!");
+        } else {
+            sayDelayed("不——!你先回来,东西我帮你看着!");
+        }
     }
 
     /**
@@ -769,6 +808,9 @@ public class FrendEntity extends PathAwareEntity {
         if (this.getWorld().isClient) return;
         ItemScatterer.spawn(this.getWorld(), this.getBlockPos(), this.inventory);
         for (int i = 0; i < inventory.size(); i++) inventory.setStack(i, ItemStack.EMPTY);
+        // v0.15 遗物袋一并散落——它没了,你的东西也一件不昧
+        ItemScatterer.spawn(this.getWorld(), this.getBlockPos(), this.salvage);
+        for (int i = 0; i < salvage.size(); i++) salvage.setStack(i, ItemStack.EMPTY);
         // v0.7:身上穿的拿的也一并还给主人(解散走这里;死亡由 setEquipmentDropChance 兜底)
         for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND,
                 EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
@@ -911,6 +953,12 @@ public class FrendEntity extends PathAwareEntity {
         NbtCompound invTag = new NbtCompound();
         Inventories.writeNbt(invTag, list, this.getWorld().getRegistryManager());
         nbt.put("FrendInventory", invTag);
+        // v0.15 遗物袋(同款写法)
+        DefaultedList<ItemStack> sList = DefaultedList.ofSize(salvage.size(), ItemStack.EMPTY);
+        for (int i = 0; i < salvage.size(); i++) sList.set(i, salvage.getStack(i));
+        NbtCompound sTag = new NbtCompound();
+        Inventories.writeNbt(sTag, sList, this.getWorld().getRegistryManager());
+        nbt.put("FrendSalvage", sTag);
         // v0.4 长期记忆
         nbt.put("FrendMemory", memory.toNbt());
     }
@@ -934,6 +982,11 @@ public class FrendEntity extends PathAwareEntity {
             DefaultedList<ItemStack> list = DefaultedList.ofSize(inventory.size(), ItemStack.EMPTY);
             Inventories.readNbt(nbt.getCompound("FrendInventory"), list, this.getWorld().getRegistryManager());
             for (int i = 0; i < inventory.size(); i++) inventory.setStack(i, list.get(i));
+        }
+        if (nbt.contains("FrendSalvage")) { // v0.15 遗物袋
+            DefaultedList<ItemStack> sList = DefaultedList.ofSize(salvage.size(), ItemStack.EMPTY);
+            Inventories.readNbt(nbt.getCompound("FrendSalvage"), sList, this.getWorld().getRegistryManager());
+            for (int i = 0; i < salvage.size(); i++) salvage.setStack(i, sList.get(i));
         }
         if (nbt.contains("FrendMemory")) {
             memory.fromNbt(nbt.getCompound("FrendMemory"));

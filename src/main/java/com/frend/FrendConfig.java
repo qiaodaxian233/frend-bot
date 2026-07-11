@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 12;
+    public static final int CURRENT_CONFIG_VERSION = 13;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -183,6 +183,10 @@ public class FrendConfig {
     public boolean strafeInCombat = true;
     /** 射箭带提前量:按飞行时间预判目标位移(骷髅不会,神射手会)。 */
     public boolean bowLeadTarget = true;
+
+    // ===== v0.15 帮你捡尸 =====
+    /** 你死了它去出事地点把掉落全收进遗物袋(独立于它自己背包),见面全数奉还。 */
+    public boolean collectOwnerDrops = true;
 
     // ===== v0.14 挖矿进修(Baritone 思路) =====
     /** 追脉上限:一条矿脉最多连挖这么多块就收手,防止把直巷挖成蚁穴。 */

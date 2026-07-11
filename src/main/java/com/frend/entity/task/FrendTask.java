@@ -113,6 +113,11 @@ public abstract class FrendTask {
                 return "那块贴着岩浆,我不碰,命要紧。";
             }
         }
+        // v0.15 读 Baritone MovementHelper#avoidBreaking 学的:正上方是液体永远回避(挖开当头浇);
+        // 侧面的流动水可容忍,岩浆仍然六邻全禁(咱比它怂,怂得有理)。
+        if (!world.getFluidState(p.up()).isEmpty()) {
+            return "那块头顶顶着水,挖开淋一身,跳过。";
+        }
         for (int dy = 1; dy <= 2; dy++) {
             if (world.getBlockState(p.up(dy)).getBlock() instanceof net.minecraft.block.FallingBlock) {
                 return "那块头顶悬着沙子,挖了会被砸,跳过。";

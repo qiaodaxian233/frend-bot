@@ -427,3 +427,41 @@ Entity#getHorizontalFacing、Blocks.ANCIENT_DEBRIS/NETHER_QUARTZ_ORE——均常
 **【待编译验证】新增**:LivingEntity#getDamageSources().mobAttack、ServerWorld#spawnParticles
 (ParticleTypes.CRIT 七参)、SoundEvents.ENTITY_PLAYER_ATTACK_CRIT、CreeperEntity#getFuseSpeed、
 Entity#fallDistance(公开字段)、Direction#rotateYClockwise/CounterClockwise——常见 API,风险低。
+
+---
+
+## Baritone 源码研读 #1(2026-07-11,作者授意:参考不搬运)
+
+github.com 在沙箱网络白名单内,直接拉了 `MovementHelper.java`(挖掘避险核心)研读。三条收获:
+
+1. **正上方液体永远回避**(`avoidAdjacentBreaking` 的 directlyAbove 分支):挖开当头浇。我们的判定
+   盖住了岩浆(六邻全禁)但**漏了水**——已补:`miningDanger` 加"正上方 FluidState 非空即回避"。
+   侧面流动水 Baritone 认为可容忍(流动水优先往下淌),我们隧道断面仍全禁水,比它怂,怂得有理。
+2. **虫蚀方块(Silverfish)明确回避**——长得和石头一模一样,挖了炸一窝。核对我们的白名单:
+   INFESTED_* 不在 BASE_STONE tag 里,TunnelTask 会当"白名单外"停工,MineTask 的 isOf(STONE) 也
+   匹配不上——**已然安全,属于白名单设计的免费红利**,记录备查不改码。
+3. **贴着"无支撑沙砾"的侧面方块回避**(挖了引发连锁下落)。评估:沙砾塌进隧道顶多堵路掉落,
+   不致命,我们头顶两格 FallingBlock 检查已覆盖致命面——不抄这条,记录理由。
+
+方法论再确认:读源码学判断,自己写实现,注释写明出处——这就是"参考不搬运"。
+
+---
+
+## 里程碑 16 / v0.15 — 帮你捡尸:说到做到
+
+v0.11 起它嘴上承诺"东西我帮你看着",实际上只是记个坐标——这次兑现。
+
+**流程**:你死了(AFTER_DEATH 玩家分支)→ 它喊"东西我去收,一件都不会丢!"→ SalvageTask 赶到
+出事地点 → 8 格内掉落物逐个收进**遗物袋** → 收完转 FOLLOW 主动送货 → 走到你身边 4 格内
+**全数奉还**(直接塞你背包,塞不下的放你脚边,"都在这儿——一样没少,点点?")。
+
+**遗物袋是独立仓**(SimpleInventory 45 格,NBT 走 FrendInventory 同款已验证写法):
+- 和它自己的背包分开——**存箱子任务绝不会把你的遗物存进箱子**;
+- frend 死亡/解散时遗物袋一并散落,一件不昧;
+- 经验球刻意不收(捡了也还不回去,不装好人)。
+
+**规矩**:连续 4 秒扫不到新掉落=捡完收工;90 秒总兜底;出事点走不到(岩浆/虚空)如实认怂。
+**顺手修**:mobTick 任务收尾无条件 setMode(STAY) → 改为任务自己换过模式就尊重(捡完转 FOLLOW 靠这个)。
+
+**【待编译验证】新增**:PlayerInventory#insertStack(ItemStack)、ItemEntity#setStack/discard/getStack
+(v0.2 干活捡东西已用过=已验证)、SimpleInventory 第二实例零新 API。风险极低。

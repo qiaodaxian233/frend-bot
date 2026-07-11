@@ -32,6 +32,8 @@
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
 
+m16(v0.15 帮你捡尸)+Baritone 源码研读#1(作者授意参考不搬运,github 在沙箱白名单直接拉 MovementHelper 研读):研读三收获——正上方液体永远回避(已补 miningDanger 漏的水)/虫蚀方块回避(白名单免费红利已然安全,记录不改码)/侧邻无支撑沙砾(评估不致命不抄,记录理由);m16——SalvageTask(你死→喊话→赶出事点→8 格掉落逐收→静默 4s 或 90s 兜底收工→转 FOLLOW 送货→4 格内 giveSalvageBack 塞你背包塞不下落脚边)+遗物袋独立仓(SimpleInventory45,NBT 同款已验证写法,与自有背包隔离=DepositTask 永不存走遗物,死亡解散一并散落,经验球刻意不收)+走不到出事点如实认怂;顺手修 mobTick 任务收尾无条件 STAY→尊重任务自改模式;config v12→v13 collectOwnerDrops。 · 上一里程碑
+
 m15(v0.14 战斗进修+鱼骨矿道,作者点题 Wurst/Baritone):思路翻译不搬码(外挂架构不同+许可证),红线不动(不打玩家/像人:有起跳蓄力走位无瞬杀锁头);战斗四件——跳劈暴击 critHits(先跳一 tick 下落落刀,手动补 50% 伤+CRIT 粒子+玩家暴击音效,critPending stop 清零)/威胁索敌 threatTargeting(评分:点火苦力怕+500>打 owner+300>打我+200>残血加权>距离罚分,关掉退回就近)/间隙走位 strafeInCombat(冷却期 15% 侧移 25% 换边,近战落地才做)/箭提前量 bowLeadTarget(飞行时间×目标速度封顶 3 格);挖矿两件——有界追脉 veinChaseMax=12(自首:v0.13 注释吹不追脉但 scanForOres 早在无界追,教训=注释描述实际不是愿望)/鱼骨矿道 branchMining(到层主巷每 4 步左右各开 5 格分支,状态机 LEFT→回→RIGHT→回,分支遇险掉头不废主巷);config v11→v12。 · 上一里程碑
 
 m14(v0.13 挖矿路径规划):作者提 automodpack→查证为整合包同步工具无关挖矿,实指 Baritone,借思路不抄码(架构不同+LGPL);新 TunnelTask 双模式——TUNNEL 平巷(开工朝向取整 1x2 直巷上限 tunnelMaxLength=48)/DEEP 下矿(楼梯法进1降1断面3高到 deepMineTargetY=-58 转平巷,断面自上而下);红线四连(任一触发整条道收工,隧道有方向绕不开):白名单防拆家(BASE_STONE 系+圆石泥土沙砾+全矿种,白名单外="像有人修的")/v0.6 避险提炼至基类 miningDanger(MineTask 委托零行为变化)/渗水收工/挖穿溶洞不搭桥停工叫人;见矿顺手掏(破块扫六邻入队,只掏露头不追脉);掘进预算独立不受 maxBlocksPerJob 约束;入口 /frend work tunnel|deep+聊天关键词(TUNNEL/DEEP 必须排 KEY_ORE 前,"挖矿道"含"挖矿");config v10→v11。 · 上一里程碑
