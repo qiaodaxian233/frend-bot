@@ -128,6 +128,9 @@ public class FrendEntity extends PathAwareEntity {
     /** v0.4 长期记忆:相识天数/击杀/救主/干活量/大事记,随 NBT 持久化。 */
     private final FrendMemory memory = new FrendMemory();
 
+    /** v0.19 知识库:见识与教训,随灵魂终身学习。 */
+    private final FrendKnowledge knowledge = new FrendKnowledge();
+
     /** v0.5 自主行动:待命时自己找活、包满自己去存、环境闲话。 */
     private final FrendAutonomy autonomy = new FrendAutonomy(this);
 
@@ -196,6 +199,7 @@ public class FrendEntity extends PathAwareEntity {
             if (soul != null && soul.contains("Memory")) {
                 memory.fromNbt(soul.getCompound("Memory"));
                 memory.rebaseTo(this.getWorld().getTime(), soul.getLong("DaysSnapshot"));
+                if (soul.contains("Knowledge")) knowledge.fromNbt(soul.getCompound("Knowledge")); // v0.19 见识随魂走
                 if (soul.contains("Name")) {
                     this.setCustomName(Text.literal(soul.getString("Name")));
                     this.setCustomNameVisible(true);
@@ -206,6 +210,8 @@ public class FrendEntity extends PathAwareEntity {
     }
 
     public FrendMemory getMemory() { return memory; }
+
+    public FrendKnowledge getKnowledge() { return knowledge; }
 
     public UUID getOwnerUuid() { return ownerUuid; }
 
@@ -669,6 +675,10 @@ public class FrendEntity extends PathAwareEntity {
                     // v0.18 学话:两成概率蹦一句跟你学的口头禅——朋友待久了说话都像
                     String learned = c.phraseLearning && this.random.nextFloat() < 0.2f
                             ? memory.randomLearnedPhrase(this.random) : null;
+                    // v0.19 三成概率谈见识(知识库有货才谈)
+                    if (learned == null && c.knowledgeEnabled && this.random.nextFloat() < 0.3f) {
+                        learned = knowledge.randomInsight(this.random);
+                    }
                     sayDelayed(learned != null ? learned
                             : AMBIENT_LINES[this.random.nextInt(AMBIENT_LINES.length)]);
                 }
@@ -688,6 +698,14 @@ public class FrendEntity extends PathAwareEntity {
             if (source.getAttacker() instanceof net.minecraft.entity.LivingEntity living) {
                 combatGoal.onSelfHurt(living);
             }
+        }
+        // v0.19 知识:记住被谁伤过;苦力怕爆炸单独记教训(下次离它更远)
+        if (hurt && !this.getWorld().isClient) {
+            boolean creeperBlast = source.getSource() instanceof net.minecraft.entity.mob.CreeperEntity
+                    || source.getAttacker() instanceof net.minecraft.entity.mob.CreeperEntity;
+            String byName = source.getAttacker() instanceof net.minecraft.entity.LivingEntity la
+                    ? la.getName().getString() : null;
+            knowledge.recordHurtBy(byName, creeperBlast);
         }
         return hurt;
     }
@@ -742,6 +760,7 @@ public class FrendEntity extends PathAwareEntity {
     public void onArrowKill(net.minecraft.entity.mob.MobEntity mob) {
         if (this.getWorld().isClient || !this.isAlive()) return;
         long now = this.getWorld().getTime();
+        knowledge.recordKill(mob.getName().getString()); // v0.19 知识入账
         String line = getMemory().recordKill(mob.getName().getString(), now);
         if (line != null) sayDelayed(line);
         if (mob.getTarget() instanceof PlayerEntity p && isOwner(p)) {
@@ -805,6 +824,16 @@ public class FrendEntity extends PathAwareEntity {
      * lastDimension 随 NBT 持久化——跨维度传送是复制实体,不存的话每次过门都丢状态。
      */
     private void tickDimensionAwareness() {
+        // v0.19 探索知识:头一回到的生物群系记一笔,顺嘴感慨(recordBiome 自带去重)
+        if (FrendConfig.get().knowledgeEnabled && this.age % 100 == 0) {
+            String biomeId = this.getWorld().getBiome(this.getBlockPos()).getKey()
+                    .map(k -> k.getValue().toString()).orElse(null); // 【待编译验证】RegistryEntry#getKey
+            String line = knowledge.recordBiome(biomeId);
+            if (line != null && ambientCooldown <= 0) { // 借闲聊冷却,不刷屏
+                ambientCooldown = 20 * 60;
+                sayDelayed(line);
+            }
+        }
         String dim = this.getWorld().getRegistryKey().getValue().toString();
         if (!dim.equals(lastDimension)) {
             boolean known = lastDimension != null; // 刚生成/刚加载时 lastDimension 为空,静默记录不喊话
@@ -829,6 +858,7 @@ public class FrendEntity extends PathAwareEntity {
     public void onDeath(DamageSource source) {
         if (!this.getWorld().isClient) {
             // v0.18 灵魂让这句话成真了:死亡带不走记忆,再召出来的还是它
+            knowledge.recordMyDeath(); // v0.19 灵魂记得每一世
             if (FrendConfig.get().soulEnabled && ownerUuid != null) {
                 com.frend.system.FrendSoul.save(this);
                 say("别慌……我们还会再见的。你的事我都记在魂里了——东西先留给你,回头见。");
@@ -1004,6 +1034,8 @@ public class FrendEntity extends PathAwareEntity {
         nbt.put("FrendSalvage", sTag);
         // v0.4 长期记忆
         nbt.put("FrendMemory", memory.toNbt());
+        // v0.19 知识库
+        nbt.put("FrendKnowledge", knowledge.toNbt());
     }
 
     @Override
@@ -1031,6 +1063,7 @@ public class FrendEntity extends PathAwareEntity {
             Inventories.readNbt(nbt.getCompound("FrendSalvage"), sList, this.getWorld().getRegistryManager());
             for (int i = 0; i < salvage.size(); i++) salvage.setStack(i, sList.get(i));
         }
+        if (nbt.contains("FrendKnowledge")) knowledge.fromNbt(nbt.getCompound("FrendKnowledge")); // v0.19
         if (nbt.contains("FrendMemory")) {
             memory.fromNbt(nbt.getCompound("FrendMemory"));
         }

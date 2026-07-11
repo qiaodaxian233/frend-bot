@@ -228,6 +228,10 @@ public class FrendCombatGoal extends Goal {
 
         // ===== 移动:保持 2 格攻击距离,太近退后一点 =====
         double targetDist = hasRangedWeapon() ? 6.0 : 2.0;
+        // v0.19 知识改变行为:被苦力怕炸得越多,平时离它站得越远(教训长在身上)
+        if (target instanceof net.minecraft.entity.mob.CreeperEntity) {
+            targetDist = Math.max(targetDist, 3.0 + frend.getKnowledge().creeperFear());
+        }
         if (dist > targetDist + 1.0) {
             frend.getNavigation().startMovingTo(target, c.followSpeed * 1.1);
         } else if (dist < 1.5 && !hasRangedWeapon()) {
@@ -292,6 +296,7 @@ public class FrendCombatGoal extends Goal {
             if (!target.isAlive()) {
                 long now = frend.getWorld().getTime();
                 String mobName = target.getName().getString();
+                frend.getKnowledge().recordKill(mobName); // v0.19 知识入账
                 String milestone = frend.getMemory().recordKill(mobName, now);
                 if (defendingOwner) {
                     String rescueLine = frend.getMemory().recordRescue(mobName, now);

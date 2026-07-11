@@ -558,3 +558,35 @@ config v14→v15 llmIntentEnabled(默认开,仅 openai 后端生效;关掉完全
 1.21.1 签名(老版收 File/流,报错优先查这)、NbtSizeTracker.ofUnlimitedBytes、
 ServerPlayConnectionEvents JOIN/DISCONNECT 包路径(fabric-networking-api-v1)、
 FabricLoader.getConfigDir、NbtCompound#getKeys、Entity#random 类型为 math.random.Random。
+
+---
+
+## 里程碑 20 / v0.19 — 知识库:一直学习,越活越像人(作者点题)
+
+**三层架构**(作者问"怎么做",答案在此):
+1. **感知层**:游戏事件必经之路埋钩子——关键设计是找"漏斗口":所有任务的方块破坏都过
+   FrendTask#breakTick,一处埋钩全收;击杀两口(白刃收尾+箭杀);受伤一口(damage);探索一口
+   (mobTick 每 5s 轮询生物群系,recordBiome 自带去重);
+2. **沉淀层**:FrendKnowledge——计数知识(打过什么/挖过什么/去过哪/被谁伤过)带上限忘旧
+   (人也记不住所有事,记得住的才叫见识)+ **教训**(苦力怕爆炸计数);
+3. **表达层**:闲聊三成概率谈见识/关键词"见过什么/见识"能答/LLM 人设注入 llmBrief/
+   **知识改变行为**——被苦力怕炸的次数直接换算成对苦力怕的安全距离(+1 格/次,封顶 +3),
+   这是全仓第一处"学来的行为",不是写死的行为。
+
+**存储**:实体 NBT + 灵魂档双写(souls 里加 Knowledge 标签)——**见识随魂走,终身学习跨档不清零**。
+
+**首见大事一次性感慨**:第一次挖到钻石("这块的位置我记一辈子!")/远古残骸/绿宝石,firsts 集合去重一生一次。
+
+### 事件分类总账(作者要求"把所有能发生的都写进去"——已接✅ / 挂账⏳)
+- ✅ 采集:破坏方块(全任务漏斗口)、首见钻石/残骸/绿宝石
+- ✅ 战斗:击杀(白刃/箭)、被谁伤、苦力怕爆炸教训→行为
+- ✅ 探索:生物群系首见(常见群系带中文味)、维度切换(v0.9 已有)
+- ✅ 生死:自己死过几世(灵魂记得)、你的死亡地点(v0.11 已有)
+- ✅ 社交:你的口头禅(v0.18)、你让记的事(v0.10)、双向救援(v0.10/0.4)
+- ⏳ 钓鱼/种田(先要有这两个任务)、村民交易、附魔/酿造、Boss 战(凋灵/末影龙专属感慨)、
+  袭击事件、结构发现(村庄/要塞/古城——需结构检测 API)、驯服动物、天气极端事件(雷劈)、
+  音乐唱片、进度(advancement 联动)。挂账项每个只需在对应事件处加一行 knowledge.recordX。
+**扩展约定**:新知识一律走 FrendKnowledge 加 record 方法 + NBT 字段 + 表达出口,不散落。
+
+**【待编译验证】新增**:RegistryEntry#getKey(返回 Optional<RegistryKey>)、Registries.BLOCK.getId、
+LinkedHashMap/LinkedHashSet(纯 JDK 零风险)。config v16→v17 knowledgeEnabled。

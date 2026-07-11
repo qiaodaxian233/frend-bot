@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 16;
+    public static final int CURRENT_CONFIG_VERSION = 17;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -207,6 +207,10 @@ public class FrendConfig {
     public boolean soulEnabled = true;
     /** 学话:同一句短话你说满 3 次它就学会,闲聊时会蹦出来(纯本地词频,不涉 LLM)。 */
     public boolean phraseLearning = true;
+
+    // ===== v0.19 知识库 =====
+    /** 见识与教训:打过什么/挖过什么/去过哪终身累积(随灵魂跨档);被苦力怕炸多了会自己学乖离远点。 */
+    public boolean knowledgeEnabled = true;
 
     // ===== v0.14 挖矿进修(Baritone 思路) =====
     /** 追脉上限:一条矿脉最多连挖这么多块就收手,防止把直巷挖成蚁穴。 */

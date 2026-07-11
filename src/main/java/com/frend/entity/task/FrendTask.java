@@ -83,6 +83,11 @@ public abstract class FrendTask {
 
         if (breakProgress >= totalTicks) {
             frend.getWorld().setBlockBreakingInfo(frend.getId(), pos, -1);
+            // v0.19 挖掘知识一处全收(所有任务的破坏都过这里);首见钻石之类的一次性感慨也在此
+            String blockId = net.minecraft.registry.Registries.BLOCK.getId(
+                    frend.getWorld().getBlockState(pos).getBlock()).toString();
+            String firstLine = frend.getKnowledge().recordMined(blockId);
+            if (firstLine != null) frend.sayDelayed(firstLine);
             frend.getWorld().breakBlock(pos, true, frend); // 掉落物由实体侧的"干活捡东西"收进背包
             breakingPos = null;
             breakProgress = 0;

@@ -57,6 +57,8 @@ public final class FrendChatHandler {
 
     // ===== v0.4 记忆关键词 =====
     private static final String[] KEY_MEMORY = {"还记得", "记得吗", "认识多久", "多少天", "战绩", "杀了多少", "干了多少", "回忆"};
+    // v0.19 知识库
+    private static final String[] KEY_KNOW = {"见过什么", "都知道什么", "见识", "去过哪", "学到什么"};
 
     // ===== v0.5 自主行动开关关键词 =====
     private static final String[] KEY_AUTO_ON  = {"自由活动", "自己找事", "自己安排", "别闲着", "看着办"};
@@ -224,6 +226,8 @@ public final class FrendChatHandler {
         } else if (matches(text, KEY_AUTO_OFF)) {
             FrendConfig.get().autonomyEnabled = false;
             frend.sayDelayed("收到,没你的话我不乱动。");
+        } else if (matches(text, KEY_KNOW)) {
+            frend.sayDelayed(frend.getKnowledge().summaryLine());
         } else if (matches(text, KEY_MEMORY)) {
             frend.sayDelayed(frend.getMemory().recapLine(frend.getWorld().getTime()));
         } else if (matches(text, KEY_STATUS)) {
@@ -412,6 +416,7 @@ public final class FrendChatHandler {
                 + "你当前状态:血量 " + (int) frend.getHealth() + "/" + (int) frend.getMaxHealth()
                 + "," + mode + ",现在是" + (day ? "白天" : "夜里") + "。"
                 + frend.getMemory().llmSummary(frend.getWorld().getTime()) // v0.4:共同经历入上下文,让闲聊有"往事"
+                + frend.getKnowledge().llmBrief() // v0.19:见识入上下文,让闲聊有"阅历"
                 + (cfg.llmPersonaExtra == null || cfg.llmPersonaExtra.isBlank() ? "" : "附加设定:" + cfg.llmPersonaExtra);
     }
 

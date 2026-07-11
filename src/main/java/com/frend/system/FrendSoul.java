@@ -75,6 +75,7 @@ public final class FrendSoul {
         try {
             NbtCompound soul = new NbtCompound();
             soul.put("Memory", frend.getMemory().toNbt());
+            soul.put("Knowledge", frend.getKnowledge().toNbt()); // v0.19 见识随魂走
             soul.putLong("DaysSnapshot", frend.getMemory().daysTogether(frend.getWorld().getTime()));
             soul.putLong("LastSeenMillis", System.currentTimeMillis());
             if (frend.hasCustomName()) soul.putString("Name", frend.getDisplayName().getString());
