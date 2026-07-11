@@ -33,8 +33,10 @@ import java.util.Deque;
  *   <li><b>挖穿溶洞</b>:前方落脚点悬空 → 不搭桥(红线:不放置方块),停下叫你来看。</li>
  * </ul>
  *
- * <p>见矿顺手掏:每挖穿一块,扫它的六邻,露出来的矿石(全矿种)排队掏走——只掏露头,<b>不追矿脉</b>
- * (追脉会越挖越歪,把直巷挖成蚁穴)。火把由实体层 autoTorch 免费覆盖;镐耐久/没镐规矩同 MineTask。
+ * <p>见矿顺手掏(v0.14 修订):每挖穿一块扫六邻,露头矿入队;掏矿时继续扫,天然形成<b>追脉</b>——
+ * 一条脉封顶 veinChaseMax(12)块就收手回巷道,不挖成蚁穴。下矿到层后开<b>鱼骨矿道</b>(Baritone
+ * 分支采矿思路):主巷每 branchInterval 步向左右各开 branchLength 格短分支,分支遇险掉头不废主巷。
+ * 火把由实体层 autoTorch 免费覆盖;镐耐久/没镐规矩同 MineTask。
  */
 public class TunnelTask extends FrendTask {
 
@@ -46,11 +48,25 @@ public class TunnelTask extends FrendTask {
     /** 巷道游标:frend 当前应站的那格(脚)。 */
     private BlockPos cursor = null;
 
-    private int advanced = 0;      // 已掘进步数
-    private int blocksMined = 0;   // 总破坏方块数(含矿)
+    private int advanced = 0;      // 已掘进步数(只算主巷)
+    private int blocksMined = 0;   // 总破坏方块数(含矿/分支)
     private int oresMined = 0;     // 其中矿石数
     /** 见矿顺手掏的队列。 */
     private final Deque<BlockPos> oreQueue = new ArrayDeque<>();
+    /** v0.14 追脉计数:一条脉连挖到 veinChaseMax 就收手,防蚁穴(v0.13 注释吹"不追脉",其实 scanForOres
+     *  挖矿后扫六邻就是在追,且没上限——这次封顶,注释改诚实)。 */
+    private int veinChained = 0;
+
+    // ===== v0.14 鱼骨矿道(Baritone 分支采矿思路):下矿到层后主巷每隔几步向两侧开短分支 =====
+    private enum Branch { NONE, LEFT, RIGHT }
+    private Branch branch = Branch.NONE;
+    /** 分支游标(分支自己的掘进头)。 */
+    private BlockPos branchCursor = null;
+    private int branchAdvanced = 0;
+    /** 正在从分支尽头走回主巷。 */
+    private boolean branchReturning = false;
+    /** 主巷推进计数,攒够 branchInterval 开一对分支。 */
+    private int sinceBranch = 0;
 
     public TunnelTask(FrendEntity frend, Kind kind) {
         super(frend);
@@ -85,7 +101,7 @@ public class TunnelTask extends FrendTask {
             return false;
         }
 
-        // 1) 有矿先掏矿(就在巷壁上,一两步的事)
+        // 1) 有矿先掏矿(就在巷壁上,一两步的事;一条脉封顶 veinChaseMax,别把巷子挖成蚁穴)
         if (!oreQueue.isEmpty()) {
             BlockPos ore = oreQueue.peekFirst();
             if (!isAnyOre(frend.getWorld().getBlockState(ore)) || miningDanger(ore) != null) {
@@ -101,8 +117,21 @@ public class TunnelTask extends FrendTask {
                 blocksMined++; oresMined++;
                 frend.getMemory().addMined(1);
                 frend.damageTool(pick);
-                scanForOres(ore);
+                if (++veinChained >= cfg.veinChaseMax) {
+                    oreQueue.clear();
+                    veinChained = 0;
+                    frend.sayDelayed("这条脉够肥,先掏到这儿——巷子还得直着走。");
+                } else {
+                    scanForOres(ore);
+                }
             }
+            return true;
+        }
+        veinChained = 0; // 队列空了,这条脉算完
+
+        // 1.5) v0.14 鱼骨分支进行中 → 走分支的小状态机
+        if (branch != Branch.NONE) {
+            tickBranch(cfg, pick);
             return true;
         }
 
@@ -164,8 +193,73 @@ public class TunnelTask extends FrendTask {
         }
         cursor = next.toImmutable();
         advanced++;
+        // v0.14 鱼骨:下矿已到层 + 开关开着 → 主巷每 branchInterval 步向两侧开一对短分支
+        if (kind == Kind.DEEP && !stair && cfg.branchMining && ++sinceBranch >= cfg.branchInterval) {
+            branch = Branch.LEFT;
+            branchCursor = cursor;
+            branchAdvanced = 0;
+            branchReturning = false;
+        }
         moveNear(cursor, 1.2); // 跟上巷道头
         return true;
+    }
+
+    /**
+     * v0.14 鱼骨分支小状态机:LEFT 掘完走回主巷 → RIGHT 掘完走回主巷 → 回主巷继续。
+     * 分支是消耗品——遇险/白名单外/渗水/悬空<b>掉头回主巷</b>,不像主巷那样整条收工。
+     */
+    private void tickBranch(FrendConfig cfg, ItemStack pick) {
+        Direction bdir = branch == Branch.LEFT ? dir.rotateYCounterclockwise() : dir.rotateYClockwise();
+
+        if (branchReturning) {
+            if (moveNear(cursor, 1.4) || stuckTicks() > 20 * 8) {
+                resetStuck();
+                branchReturning = false;
+                if (branch == Branch.LEFT) {
+                    branch = Branch.RIGHT;
+                    branchCursor = cursor;
+                    branchAdvanced = 0;
+                } else {
+                    branch = Branch.NONE;
+                    sinceBranch = 0;
+                }
+            }
+            return;
+        }
+
+        if (branchAdvanced >= cfg.branchLength) {
+            branchReturning = true;
+            return;
+        }
+
+        BlockPos front = branchCursor.offset(bdir);
+        for (BlockPos p : new BlockPos[]{front.up(), front}) {
+            BlockState state = frend.getWorld().getBlockState(p);
+            if (state.isAir()) continue;
+            if (!tunnelMinable(state) || miningDanger(p) != null || waterAdjacent(p)) {
+                branchReturning = true; // 分支掉头,不废整条道
+                return;
+            }
+            if (!moveNear(p, cfg.workReach)) {
+                if (stuckTicks() > 20 * 6) { branchReturning = true; resetStuck(); }
+                return;
+            }
+            if (breakTick(p, cfg.mineTicksPerBlock)) {
+                blocksMined++;
+                frend.getMemory().addMined(1);
+                frend.damageTool(pick);
+                scanForOres(p);
+            }
+            return;
+        }
+        // 断面全空 → 分支前进一步;落脚悬空同样掉头
+        if (frend.getWorld().getBlockState(front.down()).isAir()) {
+            branchReturning = true;
+            return;
+        }
+        branchCursor = front.toImmutable();
+        branchAdvanced++;
+        moveNear(branchCursor, 1.2);
     }
 
     /** 白名单:天然石头族 + 全矿种。名单之外(木板/玻璃/黑曜石/基岩……)一概不碰。 */
@@ -185,7 +279,7 @@ public class TunnelTask extends FrendTask {
                 || s.isOf(Blocks.NETHER_QUARTZ_ORE) || s.isOf(Blocks.ANCIENT_DEBRIS);
     }
 
-    /** 挖穿一块后扫它的六邻,新露头的矿排队(只掏露头,不追脉)。 */
+    /** 挖穿一块后扫它的六邻,新露头的矿排队(掏矿时继续扫=有界追脉,上限在 tick 里管)。 */
     private void scanForOres(BlockPos broken) {
         for (Direction d : Direction.values()) {
             BlockPos p = broken.offset(d);

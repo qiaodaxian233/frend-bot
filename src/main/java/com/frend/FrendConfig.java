@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 11;
+    public static final int CURRENT_CONFIG_VERSION = 12;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -173,6 +173,24 @@ public class FrendConfig {
     public int tunnelMaxLength = 48;
     /** 下矿目标矿层(楼梯挖到这个 Y 再转平巷;1.18+ 钻石密集层约 -58)。 */
     public int deepMineTargetY = -58;
+
+    // ===== v0.14 战斗进修(Wurst 思路,红线不变:不打玩家/动作像人) =====
+    /** 跳劈暴击:落地起跳、下落出刀,玩家同款暴击(+50% 伤害,暴击粒子)。 */
+    public boolean critHits = true;
+    /** 威胁优先级索敌:点着的苦力怕 > 正在打你的 > 打它自己的 > 残血斩杀 > 就近。 */
+    public boolean threatTargeting = true;
+    /** 出手间隙侧移走位,不站桩换刀。 */
+    public boolean strafeInCombat = true;
+    /** 射箭带提前量:按飞行时间预判目标位移(骷髅不会,神射手会)。 */
+    public boolean bowLeadTarget = true;
+
+    // ===== v0.14 挖矿进修(Baritone 思路) =====
+    /** 追脉上限:一条矿脉最多连挖这么多块就收手,防止把直巷挖成蚁穴。 */
+    public int veinChaseMax = 12;
+    /** 鱼骨矿道:下矿到层后,主巷每隔 branchInterval 步向左右各开一条 branchLength 格的分支。 */
+    public boolean branchMining = true;
+    public int branchInterval = 4;
+    public int branchLength = 5;
 
     public static FrendConfig get() {
         if (INSTANCE == null) load();

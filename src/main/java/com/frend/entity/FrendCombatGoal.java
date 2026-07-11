@@ -62,6 +62,12 @@ public class FrendCombatGoal extends Goal {
     /** "没箭了"只喊一次,再摸到箭就复位。 */
     private boolean saidNoArrows = false;
 
+    // ===== v0.14 战斗进修 =====
+    /** 跳劈状态:已起跳,待下落落刀。 */
+    private boolean critPending = false;
+    /** 走位方向(偶尔换边,别绕成钟摆)。 */
+    private boolean strafeLeft = true;
+
     public FrendCombatGoal(FrendEntity frend) {
         this.frend = frend;
         setControls(EnumSet.of(Control.MOVE, Control.LOOK));
@@ -159,6 +165,7 @@ public class FrendCombatGoal extends Goal {
         blockTicks = 0;
         defendingOwner = false;
         bowDrawTicks = 0;
+        critPending = false; // v0.14 跳劈状态清零,打断后不残留
         // 举盾状态解除
         if (frend.isBlocking()) frend.clearActiveItem();
     }
@@ -226,6 +233,14 @@ public class FrendCombatGoal extends Goal {
         } else if (dist < 1.5 && !hasRangedWeapon()) {
             // 太贴着了,退一步
             frend.getNavigation().stop();
+        } else if (c.strafeInCombat && !hasRangedWeapon() && attackCooldown > 0
+                && frend.isOnGround() && frend.getRandom().nextFloat() < 0.15f) {
+            // v0.14 走位(Wurst 思路):出手间隙侧移一步半,不站桩换刀;偶尔换边,别绕圈绕成钟摆
+            if (frend.getRandom().nextFloat() < 0.25f) strafeLeft = !strafeLeft;
+            net.minecraft.util.math.Vec3d toT = target.getPos().subtract(frend.getPos()).normalize();
+            double sx = -toT.z * (strafeLeft ? 1.6 : -1.6);
+            double sz = toT.x * (strafeLeft ? 1.6 : -1.6);
+            frend.getNavigation().startMovingTo(frend.getX() + sx, frend.getY(), frend.getZ() + sz, c.followSpeed);
         }
 
         // ===== v0.8 距离换武器(滞回防抖:远于 9 格且有弓有箭 → 弓;近于 4 格且有近战 → 剑斧) =====
@@ -250,10 +265,29 @@ public class FrendCombatGoal extends Goal {
         // ===== 攻击 =====
         int attackInterval = computeAttackInterval(c);
         if (dist <= 3.0 && attackCooldown <= 0) { // 近战够得着才打(原式把攻击间隔当距离用,会 12 格隔空打人)
+            // v0.14 跳劈暴击(Wurst 思路):落地状态先起跳,下一 tick 下落中出的那一刀才是暴击——玩家同款
+            if (c.critHits && frend.isOnGround() && !critPending) {
+                frend.getJumpControl().setActive();
+                critPending = true;
+                return; // 这 tick 只起跳,下 tick 空中出手
+            }
+            boolean crit = critPending && !frend.isOnGround() && frend.fallDistance > 0.0f;
+            critPending = false;
             attackCooldown = attackInterval;
             if (frend.isBlocking()) frend.clearActiveItem(); // 出拳前放盾
             frend.swingHand(Hand.MAIN_HAND, true);
             frend.tryAttack(target);
+            if (crit && target.isAlive()) {
+                // 暴击补伤 50% + 原版暴击粒子/音效(tryAttack 不走玩家暴击公式,手动补)
+                float bonus = (float) (frend.getAttributeValue(
+                        net.minecraft.entity.attribute.EntityAttributes.GENERIC_ATTACK_DAMAGE) * 0.5);
+                target.damage(frend.getDamageSources().mobAttack(frend), Math.max(1.0f, bonus));
+                if (frend.getWorld() instanceof net.minecraft.server.world.ServerWorld sw) {
+                    sw.spawnParticles(net.minecraft.particle.ParticleTypes.CRIT,
+                            target.getX(), target.getBodyY(0.6), target.getZ(), 8, 0.3, 0.3, 0.3, 0.2);
+                }
+                frend.playSound(net.minecraft.sound.SoundEvents.ENTITY_PLAYER_ATTACK_CRIT, 1.0f, 1.0f);
+            }
             // ===== v0.4 记忆埋点:这一下打死了 → 记击杀;若是救主之战 → 记救主 =====
             if (!target.isAlive()) {
                 long now = frend.getWorld().getTime();
@@ -283,9 +317,30 @@ public class FrendCombatGoal extends Goal {
                 new Box(frend.getBlockPos()).expand(range),
                 e -> e.isAlive() && !e.isSpectator() && isWhitelisted(e) && frend.canSee(e));
         if (hostiles.isEmpty()) return null;
-        hostiles.sort((a, b) -> Double.compare(
-                frend.squaredDistanceTo(a), frend.squaredDistanceTo(b)));
-        return hostiles.get(0);
+        FrendConfig c = FrendConfig.get();
+        if (!c.threatTargeting) { // 关掉就退回老实的"打最近的"
+            hostiles.sort((a, b) -> Double.compare(
+                    frend.squaredDistanceTo(a), frend.squaredDistanceTo(b)));
+            return hostiles.get(0);
+        }
+        // v0.14 威胁优先级(Wurst 思路的目标选择,人话版):
+        // 点着的苦力怕天字第一号 > 正在打我朋友的 > 打我的 > 残血先送走(斩杀) > 就近
+        PlayerEntity owner = frend.getOwnerPlayer();
+        HostileEntity best = null;
+        double bestScore = -Double.MAX_VALUE;
+        for (HostileEntity h : hostiles) {
+            double score = 0;
+            if (h instanceof net.minecraft.entity.mob.CreeperEntity cr && cr.getFuseSpeed() > 0) {
+                score += 500; // 已点火,秒切目标
+            }
+            LivingEntity t = h.getTarget();
+            if (owner != null && t == owner) score += 300;
+            else if (t == frend) score += 200;
+            score += (h.getMaxHealth() - h.getHealth()) * 2.0;         // 残血加权
+            score -= Math.sqrt(frend.squaredDistanceTo(h)) * 10.0;     // 距离罚分
+            if (score > bestScore) { bestScore = score; best = h; }
+        }
+        return best;
     }
 
     /**
@@ -389,6 +444,14 @@ public class FrendCombatGoal extends Goal {
         double d = target.getX() - frend.getX();
         double e = target.getBodyY(1.0 / 3.0) - arrow.getY();
         double f = target.getZ() - frend.getZ();
+        // v0.14 提前量(Wurst BowAimbot 思路,人话版):按飞行时间预判水平位移,封顶 3 格——骷髅不会,神射手会
+        if (FrendConfig.get().bowLeadTarget) {
+            double horiz = Math.sqrt(d * d + f * f);
+            double flightTicks = horiz / 1.6; // setVelocity speed=1.6 ≈ 每 tick 1.6 格
+            net.minecraft.util.math.Vec3d v = target.getVelocity();
+            d += Math.max(-3.0, Math.min(3.0, v.x * flightTicks));
+            f += Math.max(-3.0, Math.min(3.0, v.z * flightTicks));
+        }
         double g = Math.sqrt(d * d + f * f);
         arrow.setVelocity(d, e + g * 0.2, f, 1.6f, 6.0f);
         frend.getWorld().spawnEntity(arrow);

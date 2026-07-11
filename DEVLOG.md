@@ -397,3 +397,33 @@ MobNavigation#setCanPathThroughDoors、EntityNavigation#setCanSwim、MobEntity#g
 
 **【待编译验证】新增**:BlockTags.BASE_STONE_OVERWORLD/BASE_STONE_NETHER、Entity#getBlockY、
 Entity#getHorizontalFacing、Blocks.ANCIENT_DEBRIS/NETHER_QUARTZ_ORE——均常见,风险低。
+
+---
+
+## 里程碑 15 / v0.14 — 战斗进修 + 鱼骨矿道(Wurst / Baritone 思路,作者点题)
+
+**方法论同 m14**:两个都是客户端外挂/机器人,代码不搬(架构不同+许可证),思路翻译成服务端实体
+行为,红线不动摇——不打玩家、动作像人(有起跳有蓄力有走位,没有瞬杀没有锁头)。
+
+**战斗四件(FrendCombatGoal,各带配置开关 v12)**:
+1. **跳劈暴击** critHits:落地状态先起跳(这 tick 只跳),下一 tick 下落中出刀——玩家同款时序。
+   tryAttack 不走玩家暴击公式,手动补 50% 攻击力伤害 + CRIT 粒子 + 玩家暴击音效。critPending
+   状态在 stop() 清零防残留;起跳后目标跑了则落地normally出普通刀,不白跳第二次。
+2. **威胁优先级索敌** threatTargeting:评分制取代"打最近的"——点着的苦力怕 +500(保命优先)>
+   正在打我朋友的 +300 > 打我的 +200 > 残血加权(斩杀收割)> 距离罚分。关掉退回就近。
+3. **出手间隙走位** strafeInCombat:攻击冷却期间 15% 概率向侧面挪一步半,25% 概率换边——
+   不站桩换刀,也不绕成钟摆。只在近战、落地时做。
+4. **射箭提前量** bowLeadTarget:按飞行时间(水平距离 / 1.6 格每tick)预判目标水平位移,封顶 3 格
+   ——骷髅不会,神射手会。抛物线补偿照旧。
+
+**挖矿两件(TunnelTask)**:
+5. **有界追脉** veinChaseMax(12):**先自首**——v0.13 注释吹"只掏露头不追脉",但代码里矿被挖掉后
+   scanForOres 扫它六邻,矿邻矿就一直入队,**其实早在无界追脉**。这次封顶:一条脉连挖 12 块收手
+   ("这条脉够肥,先掏到这儿"),队列清空计数归零。教训:**注释要描述代码实际做的事,不是想做的事**。
+6. **鱼骨矿道** branchMining:下矿到层后,主巷每 branchInterval(4) 步向左右各开一条 branchLength(5)
+   格 1x2 短分支(经典分支采矿覆盖率)。小状态机 LEFT→回主巷→RIGHT→回主巷→继续主巷;
+   **分支是消耗品**:遇险/白名单外/渗水/悬空一律掉头回主巷,不像主巷那样整条收工。
+
+**【待编译验证】新增**:LivingEntity#getDamageSources().mobAttack、ServerWorld#spawnParticles
+(ParticleTypes.CRIT 七参)、SoundEvents.ENTITY_PLAYER_ATTACK_CRIT、CreeperEntity#getFuseSpeed、
+Entity#fallDistance(公开字段)、Direction#rotateYClockwise/CounterClockwise——常见 API,风险低。
