@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 8;
+    public static final int CURRENT_CONFIG_VERSION = 9;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -155,6 +155,12 @@ public class FrendConfig {
     public boolean selfDefense = true;
     /** 跨维度跟随:主人进下界/末地后,跟随中的 frend 自动追过去。 */
     public boolean crossDimensionFollow = true;
+
+    // ===== v0.11 有来有往 =====
+    /** 你血量见底时,它包里有吃的就扔一份给你(不只是嘴上提醒)。 */
+    public boolean shareFoodWhenOwnerLow = true;
+    /** 记住你倒下过的地方,路过时提醒你小心。 */
+    public boolean deathSpotWarn = true;
 
     public static FrendConfig get() {
         if (INSTANCE == null) load();

@@ -88,6 +88,8 @@ public class FrendEntity extends PathAwareEntity {
     private int fireTalkCooldown = 0;
     /** v0.10 你救我道谢的独立冷却(记忆永远记账,嘴上不刷屏)。 */
     private int saveThanksCooldown = 0;
+    /** v0.11 "你上回在这栽过"提醒的冷却。 */
+    private int deathSpotWarnCooldown = 0;
 
     // ===== 聊天记忆(不落盘):LLM 上下文 + "对话延续窗口" + 请求节流 =====
     private final java.util.ArrayDeque<String[]> chatHistory = new java.util.ArrayDeque<>();
@@ -395,18 +397,45 @@ public class FrendEntity extends PathAwareEntity {
      * 【待编译验证】1.21 数据组件:DataComponentTypes.FOOD / FoodComponent#nutrition()。
      */
     private boolean tryEat() {
+        int slot = findFoodSlot();
+        if (slot < 0) return false;
+        ItemStack s = inventory.getStack(slot);
+        net.minecraft.component.type.FoodComponent food = s.get(net.minecraft.component.DataComponentTypes.FOOD);
+        if (food == null) return false;
+        s.decrement(1);
+        this.heal(Math.max(1.0f, food.nutrition()));
+        this.playSound(net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EAT, 1.0f, 1.0f); // 已验证:1.21.1 里是纯 SoundEvent,不带 .value()
+        if (this.random.nextFloat() < 0.3f) sayDelayed("先垫两口,不耽误事。");
+        return true;
+    }
+
+    /** 背包里第一格食物的槽位,没有返回 -1(tryEat 和扔食共用)。 */
+    private int findFoodSlot() {
         for (int i = 0; i < inventory.size(); i++) {
             ItemStack s = inventory.getStack(i);
             if (s.isEmpty()) continue;
-            net.minecraft.component.type.FoodComponent food = s.get(net.minecraft.component.DataComponentTypes.FOOD);
-            if (food == null) continue;
-            s.decrement(1);
-            this.heal(Math.max(1.0f, food.nutrition()));
-            this.playSound(net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EAT, 1.0f, 1.0f); // 已验证:1.21.1 里是纯 SoundEvent,不带 .value()
-            if (this.random.nextFloat() < 0.3f) sayDelayed("先垫两口,不耽误事。");
-            return true;
+            if (s.get(net.minecraft.component.DataComponentTypes.FOOD) != null) return i;
         }
-        return false;
+        return -1;
+    }
+
+    /**
+     * v0.11 有来有往:朝你脚边扔一份吃的(一份,不是一组——它自己也要活)。
+     * 扔不出去(没吃的)返回 false,调用方退回口头提醒。
+     */
+    private boolean tossFoodTo(PlayerEntity owner) {
+        int slot = findFoodSlot();
+        if (slot < 0) return false;
+        ItemStack s = inventory.getStack(slot);
+        ItemStack one = s.copyWithCount(1);
+        s.decrement(1);
+        net.minecraft.entity.ItemEntity item = new net.minecraft.entity.ItemEntity(
+                this.getWorld(), this.getX(), this.getEyeY() - 0.3, this.getZ(), one);
+        net.minecraft.util.math.Vec3d dir = owner.getPos().add(0, 0.5, 0)
+                .subtract(this.getPos()).normalize();
+        item.setVelocity(dir.multiply(0.4).add(0, 0.2, 0));
+        this.getWorld().spawnEntity(item);
+        return true;
     }
 
     // ===================== tick(仅服务端) =====================
@@ -429,6 +458,7 @@ public class FrendEntity extends PathAwareEntity {
         if (dimensionTalkCooldown > 0) dimensionTalkCooldown--;
         if (fireTalkCooldown > 0) fireTalkCooldown--;
         if (saveThanksCooldown > 0) saveThanksCooldown--;
+        if (deathSpotWarnCooldown > 0) deathSpotWarnCooldown--;
 
         // ===== v0.9 下界适应:跨维度追随 + 换维度风味话 + 着火喊话 =====
         if (this.age % 20 == 0) {
@@ -495,12 +525,28 @@ public class FrendEntity extends PathAwareEntity {
         if (this.age % 20 == 0) {
             PlayerEntity owner = getOwnerPlayer();
             if (owner != null && owner.isAlive()) {
-                // 主人低血提醒
+                // 主人低血:v0.11 朋友不光嘴上提醒——包里有吃的就扔一份过去
                 if (c.ownerLowHealthWarn && owner.getHealth() <= c.lowHealthWarnThreshold
                         && lowHealthWarnCooldown <= 0
                         && this.squaredDistanceTo(owner) < c.chatRadius * c.chatRadius) {
                     lowHealthWarnCooldown = c.lowHealthWarnCooldownSeconds * 20;
-                    sayDelayed("你血量见底了!先别冲,吃点东西缓缓。");
+                    if (c.shareFoodWhenOwnerLow && this.squaredDistanceTo(owner) < 64.0 && tossFoodTo(owner)) {
+                        // 扔完再看:那是不是它最后的口粮
+                        sayDelayed(findFoodSlot() < 0 ? "接着!最后一口了,你吃,我扛得住。"
+                                                      : "接着!先垫口吃的,别硬扛。");
+                    } else {
+                        sayDelayed("你血量见底了!先别冲,吃点东西缓缓。");
+                    }
+                }
+                // v0.11 路过你倒下过的地方 → 提醒小心(5min 冷却;同维度 16 格内才算)
+                if (c.deathSpotWarn && deathSpotWarnCooldown <= 0
+                        && this.squaredDistanceTo(owner) < c.chatRadius * c.chatRadius) {
+                    net.minecraft.util.math.BlockPos spot = getMemory().nearestDeathSpot(
+                            this.getWorld().getRegistryKey().getValue().toString(), owner.getBlockPos(), 16);
+                    if (spot != null) {
+                        deathSpotWarnCooldown = 20 * 300;
+                        sayDelayed("小心点……你上回就是在这附近栽的。");
+                    }
                 }
                 // 偶尔闲聊(主人在身边、白天概率高一点点就免了,保持简单:纯随机 + 长冷却)
                 if (c.enableAmbientChat && ambientCooldown <= 0
@@ -549,6 +595,35 @@ public class FrendEntity extends PathAwareEntity {
         if (line != null && saveThanksCooldown <= 0) {
             saveThanksCooldown = 20 * 60;
             sayDelayed(line);
+        }
+    }
+
+    /**
+     * v0.11 你倒下了(Frend.java AFTER_DEATH 监听调用):记住地点,之后路过提醒。
+     * 刚死完压一下提醒冷却——你复活跑尸时它没必要立刻在原地念叨。
+     */
+    public void onOwnerDied(net.minecraft.server.network.ServerPlayerEntity player) {
+        if (this.getWorld().isClient || !this.isAlive()) return;
+        getMemory().recordOwnerDeath(
+                this.getWorld().getRegistryKey().getValue().toString(),
+                player.getBlockPos(), this.getWorld().getTime());
+        deathSpotWarnCooldown = Math.max(deathSpotWarnCooldown, 20 * 120);
+        sayDelayed("不——!你先回来,东西我帮你看着!");
+    }
+
+    /**
+     * v0.11 清 v0.8 欠账:射死的怪进战绩。箭是异步击杀,战斗 Goal 的白刃收尾检测不到,
+     * 走 AFTER_DEATH 监听(凶器是箭 + 射手是我 → 白刃路径不会重复入账,零冲突)。
+     * 顺带补救主判定:这怪死前正咬着我朋友。
+     */
+    public void onArrowKill(net.minecraft.entity.mob.MobEntity mob) {
+        if (this.getWorld().isClient || !this.isAlive()) return;
+        long now = this.getWorld().getTime();
+        String line = getMemory().recordKill(mob.getName().getString(), now);
+        if (line != null) sayDelayed(line);
+        if (mob.getTarget() instanceof PlayerEntity p && isOwner(p)) {
+            String r = getMemory().recordRescue(mob.getName().getString(), now);
+            if (r != null) sayDelayed(r);
         }
     }
 

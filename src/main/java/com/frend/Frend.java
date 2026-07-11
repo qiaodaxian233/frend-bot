@@ -68,14 +68,34 @@ public class Frend implements ModInitializer {
     }
 
     /**
-     * v0.10 朋友,不是仆人:情谊得是双向的。
-     * 监听生物死亡——死的怪当时正在攻击某只 frend(target 指向它),而下手的是它那位朋友(owner)
-     * → 这就是"你救了我",frend 记情 + 道谢。
-     * Fabric ServerLivingEntityEvents.AFTER_DEATH。
+     * 生物死亡监听,三路分发(v0.10 起,v0.11 扩):
+     * <ol>
+     *   <li><b>你倒下了</b>:死者是玩家 → 附近属于他的 frend 记住地点(路过提醒)+喊话;</li>
+     *   <li><b>箭杀入账</b>(v0.8 欠账清偿):凶器是箭且射手是 frend → 战绩/救主进记忆
+     *       (白刃击杀走战斗 Goal 的收尾检测,和这条互斥,不会重复入账);</li>
+     *   <li><b>你救我</b>:死的怪 target 正指向某 frend,凶手是它那位朋友 → 记情+道谢。</li>
+     * </ol>
      */
     private void registerOwnerSavedFrendListener() {
         ServerLivingEntityEvents.AFTER_DEATH.register((LivingEntity entity, DamageSource source) -> {
+            // 1) 你倒下了
+            if (entity instanceof net.minecraft.server.network.ServerPlayerEntity player
+                    && entity.getWorld() instanceof ServerWorld world) {
+                for (FrendEntity frend : world.getEntitiesByClass(
+                        FrendEntity.class,
+                        new net.minecraft.util.math.Box(player.getBlockPos()).expand(128),
+                        f -> f.isAlive() && f.isOwner(player))) {
+                    frend.onOwnerDied(player);
+                }
+                return;
+            }
             if (!(entity instanceof net.minecraft.entity.mob.MobEntity mob)) return;
+            // 2) 箭杀入账
+            if (source.getSource() instanceof net.minecraft.entity.projectile.PersistentProjectileEntity
+                    && source.getAttacker() instanceof FrendEntity shooter) {
+                shooter.onArrowKill(mob);
+            }
+            // 3) 你救我
             if (!(source.getAttacker() instanceof net.minecraft.server.network.ServerPlayerEntity player)) return;
             if (!(mob.getTarget() instanceof FrendEntity frend)) return;
             if (!frend.isOwner(player)) return; // 路人帮忙不记账,朋友的账才记

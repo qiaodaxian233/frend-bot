@@ -44,6 +44,10 @@ public class FrendMemory {
     private static final int MAX_NOTES = 8;
     private final Deque<String> notes = new ArrayDeque<>();
 
+    /** v0.11 你倒下过的地方(编码 "维度|x|y|z",FIFO 上限 {@value #MAX_DEATH_SPOTS} 条)——朋友记得你在哪栽过跟头。 */
+    private static final int MAX_DEATH_SPOTS = 3;
+    private final Deque<String> deathSpots = new ArrayDeque<>();
+
     /** 最近击杀的怪物名(口头回忆用)。 */
     private String lastKillName = "";
 
@@ -116,6 +120,30 @@ public class FrendMemory {
         int i = 1;
         for (String n : notes) sb.append(i++ == 1 ? "" : ";").append(n);
         return sb.toString();
+    }
+
+    /** v0.11 记一次你的倒下(地点入册 + 大事记)。 */
+    public void recordOwnerDeath(String dim, net.minecraft.util.math.BlockPos pos, long worldTime) {
+        deathSpots.addLast(dim + "|" + pos.getX() + "|" + pos.getY() + "|" + pos.getZ());
+        while (deathSpots.size() > MAX_DEATH_SPOTS) deathSpots.removeFirst();
+        record(worldTime, "你没能撑住,倒在了 (" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ") 附近");
+    }
+
+    /** v0.11 找 near 附近 radius 格内最近的"你倒下过的地方";同维度才算,没有返回 null。 */
+    public net.minecraft.util.math.BlockPos nearestDeathSpot(String dim, net.minecraft.util.math.BlockPos near, int radius) {
+        net.minecraft.util.math.BlockPos best = null;
+        double bestSq = (double) radius * radius;
+        for (String s : deathSpots) {
+            String[] p = s.split("\\|");
+            if (p.length != 4 || !p[0].equals(dim)) continue;
+            try {
+                net.minecraft.util.math.BlockPos pos = new net.minecraft.util.math.BlockPos(
+                        Integer.parseInt(p[1]), Integer.parseInt(p[2]), Integer.parseInt(p[3]));
+                double d = near.getSquaredDistance(pos);
+                if (d <= bestSq) { bestSq = d; best = pos; }
+            } catch (NumberFormatException ignored) { }
+        }
+        return best;
     }
 
     public void addChopped(int n) { blocksChopped += n; }
@@ -203,6 +231,9 @@ public class FrendMemory {
         NbtList noteList = new NbtList();
         for (String n : notes) noteList.add(NbtString.of(n));
         tag.put("Notes", noteList);
+        NbtList spotList = new NbtList();
+        for (String s : deathSpots) spotList.add(NbtString.of(s));
+        tag.put("DeathSpots", spotList);
         return tag;
     }
 
@@ -221,5 +252,8 @@ public class FrendMemory {
         notes.clear();
         NbtList noteList = tag.getList("Notes", NbtElement.STRING_TYPE);
         for (int i = 0; i < noteList.size(); i++) notes.addLast(noteList.getString(i));
+        deathSpots.clear();
+        NbtList spotList = tag.getList("DeathSpots", NbtElement.STRING_TYPE);
+        for (int i = 0; i < spotList.size(); i++) deathSpots.addLast(spotList.getString(i));
     }
 }
