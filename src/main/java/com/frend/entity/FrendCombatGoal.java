@@ -84,6 +84,22 @@ public class FrendCombatGoal extends Goal {
         injectedTarget = attacker;
     }
 
+    /**
+     * v0.9 自卫反击:frend 自己被打时由 FrendEntity#damage 调用。
+     * 和 onOwnerHurt 的区别:<b>任何模式都生效</b>(STAY 站桩、GO_HOME 走路上被疣猪兽拱了也得还手,
+     * 不然就是站着挨打到死——v0.3~v0.8 一直存在的地雷,下界尤其致命:疣猪兽/烈焰人/岩浆怪都不在
+     * 主动清怪白名单里,以前打 frend 它只会喊疼)。红线照旧:不还手玩家、不还手同类。
+     */
+    public void onSelfHurt(LivingEntity attacker) {
+        FrendConfig c = FrendConfig.get();
+        if (!c.combatEnabled || !c.selfDefense) return;
+        if (isInRetreating()) return;
+        if (attacker == null || !attacker.isAlive()) return;
+        if (attacker instanceof PlayerEntity) return;  // 红线:哪怕玩家打它,也绝不还手
+        if (attacker instanceof FrendEntity) return;   // 红线:不打同类
+        injectedTarget = attacker;
+    }
+
     public boolean isInRetreating() { return retreatTicks > 0; }
 
     /** 撤退计时递减(Goal 不激活时不会 tick,由 FrendEntity#mobTick 每 tick 调,否则撤退一次就永久和平)。 */
@@ -103,11 +119,10 @@ public class FrendCombatGoal extends Goal {
         if (!c.combatEnabled) return false;
         // 撤退中不打
         if (isInRetreating()) return false;
-        // 只在跟随模式主动清怪;WORK 模式干活时也保护自己
-        FrendEntity.Mode mode = frend.getMode();
-        if (mode != FrendEntity.Mode.FOLLOW && mode != FrendEntity.Mode.WORK) return false;
 
-        // 外部注入(支援主人)优先
+        // 外部注入优先,且放在模式门槛之前(v0.9):
+        // - 支援主人:onOwnerHurt 注入时已限定 FOLLOW 模式;
+        // - 自卫反击:onSelfHurt 刻意不限模式——STAY/GO_HOME 被打也要还手。
         if (injectedTarget != null && injectedTarget.isAlive()
                 && frend.squaredDistanceTo(injectedTarget) < (c.combatRange * 2.5) * (c.combatRange * 2.5)) {
             target = injectedTarget;
@@ -115,6 +130,10 @@ public class FrendCombatGoal extends Goal {
             defendingOwner = true;
             return true;
         }
+
+        // 只在跟随模式主动清怪;WORK 模式干活时也保护自己
+        FrendEntity.Mode mode = frend.getMode();
+        if (mode != FrendEntity.Mode.FOLLOW && mode != FrendEntity.Mode.WORK) return false;
 
         // 自动扫描附近 HostileEntity
         target = findNearestHostile(c.combatRange);
@@ -269,8 +288,13 @@ public class FrendCombatGoal extends Goal {
         return hostiles.get(0);
     }
 
-    /** 主动清怪白名单(设计文档 v0.3):僵尸系/骷髅系/苦力怕。别的敌对怪不主动招惹(末影人看一眼就疯)。 */
+    /**
+     * 主动清怪白名单(设计文档 v0.3):僵尸系/骷髅系/苦力怕。别的敌对怪不主动招惹(末影人看一眼就疯)。
+     * v0.9 下界修正:僵尸猪灵在代码里是 ZombieEntity 的子类,但它是中立生物——
+     * 主动打一只全族暴走,必须豁免。它先动手会走自卫路径(onSelfHurt),该还手还手。
+     */
     private boolean isWhitelisted(LivingEntity e) {
+        if (e instanceof net.minecraft.entity.mob.ZombifiedPiglinEntity) return false; // 中立,人不犯我我不犯人
         return e instanceof net.minecraft.entity.mob.ZombieEntity
                 || e instanceof net.minecraft.entity.mob.AbstractSkeletonEntity
                 || e instanceof net.minecraft.entity.mob.CreeperEntity;

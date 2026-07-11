@@ -79,6 +79,14 @@ public class FrendEntity extends PathAwareEntity {
     /** v0.7 穿装备道谢的独立冷却。 */
     private int equipTalkCooldown = 0;
 
+    // ===== v0.9 下界适应 =====
+    /** 跨维度追随的宽限计数:主人换维度后连续 N 次检查(每次 2s)都不在才追——防止主人进传送门马上回来时 frend 白跑。 */
+    private int ownerAwayChecks = 0;
+    /** 上次所在维度(Identifier 字符串),换维度说风味话用;随 NBT 走,传送复制实体后不丢。 */
+    private String lastDimension = null;
+    private int dimensionTalkCooldown = 0;
+    private int fireTalkCooldown = 0;
+
     // ===== 聊天记忆(不落盘):LLM 上下文 + "对话延续窗口" + 请求节流 =====
     private final java.util.ArrayDeque<String[]> chatHistory = new java.util.ArrayDeque<>();
     private long lastTalkMillis = 0;          // frend 上次开口时间
@@ -168,6 +176,17 @@ public class FrendEntity extends PathAwareEntity {
     public PlayerEntity getOwnerPlayer() {
         if (ownerUuid == null) return null;
         return this.getWorld().getPlayerByUuid(ownerUuid);
+    }
+
+    /**
+     * v0.9 全服找主人(不限维度)。getOwnerPlayer 走 world.getPlayerByUuid,
+     * 主人进下界后本维度查不到会返回 null——跨维度追随需要这个。只在服务端有意义。
+     */
+    public net.minecraft.server.network.ServerPlayerEntity getOwnerPlayerAnywhere() {
+        if (ownerUuid == null || this.getWorld().isClient) return null;
+        net.minecraft.server.MinecraftServer server = this.getServer();
+        if (server == null) return null;
+        return server.getPlayerManager().getPlayer(ownerUuid);
     }
 
     public Mode getMode() { return mode; }
@@ -404,6 +423,16 @@ public class FrendEntity extends PathAwareEntity {
         if (torchCooldown > 0) torchCooldown--;
         if (torchTalkCooldown > 0) torchTalkCooldown--;
         if (equipTalkCooldown > 0) equipTalkCooldown--;
+        if (dimensionTalkCooldown > 0) dimensionTalkCooldown--;
+        if (fireTalkCooldown > 0) fireTalkCooldown--;
+
+        // ===== v0.9 下界适应:跨维度追随 + 换维度风味话 + 着火喊话 =====
+        if (this.age % 20 == 0) {
+            tickDimensionAwareness();
+        }
+        if (FrendConfig.get().crossDimensionFollow && mode == Mode.FOLLOW && this.age % 40 == 0) {
+            tryFollowAcrossDimension();
+        }
 
         // ===== v0.6 自动插火把:在洞里(方块光和天空光都低)+ 背包有火把 → 脚下插一根 =====
         // 天空光条件挡住"白天野外方块光本来就是 0"的误判——地表 sky=15,永远不满足;只有洞里才插。
@@ -487,6 +516,12 @@ public class FrendEntity extends PathAwareEntity {
             hurtTalkCooldown = 20 * 8;
             sayDelayed(HURT_LINES[this.random.nextInt(HURT_LINES.length)]);
         }
+        // v0.9 自卫反击:谁打的还谁(onSelfHurt 内部过滤玩家/同类,任何模式生效)
+        if (hurt && !this.getWorld().isClient && this.isAlive() && combatGoal != null) {
+            if (source.getAttacker() instanceof net.minecraft.entity.LivingEntity living) {
+                combatGoal.onSelfHurt(living);
+            }
+        }
         return hurt;
     }
 
@@ -497,6 +532,62 @@ public class FrendEntity extends PathAwareEntity {
     public void onOwnerHurt(net.minecraft.entity.LivingEntity attacker) {
         if (combatGoal != null && FrendConfig.get().supportOwner) {
             combatGoal.onOwnerHurt(attacker);
+        }
+    }
+
+    /**
+     * v0.9 跨维度追随:主人进了别的维度(下界/末地/回主世界),跟随中的 frend 追过去。
+     * 每 2s 检查一次,连续两次(≈4s)主人都不在本维度才追——主人进门马上折返时不白跑。
+     *
+     * 【关键坑】非玩家实体换维度在 MC 里是"复制实体":旧实体销毁,目标维度里造一个新的
+     * (走完整 NBT 读写,所以背包/记忆/装备都会原样带过去)。teleport 返回的才是"活着的那个",
+     * 传送之后不能再碰 this——说话必须用返回值说。
+     * 【待编译验证】FabricDimensions.teleport 泛型签名 + TeleportTarget(Vec3d pos, Vec3d velocity,
+     * float yaw, float pitch) 1.21.1 构造(1.21.2+ 改成了 Entity#teleportTo,报错查 DEVLOG m10)。
+     */
+    private void tryFollowAcrossDimension() {
+        if (getOwnerPlayer() != null) { ownerAwayChecks = 0; return; } // 主人就在本维度,没事
+        net.minecraft.server.network.ServerPlayerEntity owner = getOwnerPlayerAnywhere();
+        if (owner == null || !owner.isAlive() || owner.getWorld() == this.getWorld()) {
+            ownerAwayChecks = 0; // 下线了/死了/其实同维度(理论上上面已捕获) → 不追
+            return;
+        }
+        if (++ownerAwayChecks < 2) return; // 宽限一轮
+        ownerAwayChecks = 0;
+        this.getNavigation().stop();
+        FrendEntity moved = net.fabricmc.fabric.api.dimension.v1.FabricDimensions.teleport(
+                this,
+                (net.minecraft.server.world.ServerWorld) owner.getWorld(),
+                new net.minecraft.world.TeleportTarget(
+                        owner.getPos(), net.minecraft.util.math.Vec3d.ZERO,
+                        this.getYaw(), this.getPitch()));
+        if (moved != null) {
+            moved.sayDelayed("等等我,这就来!");
+        }
+    }
+
+    /**
+     * v0.9 维度感知:换维度说一句风味话(每维度一句,60s 共享冷却);着火了喊一声(30s 冷却)。
+     * lastDimension 随 NBT 持久化——跨维度传送是复制实体,不存的话每次过门都丢状态。
+     */
+    private void tickDimensionAwareness() {
+        String dim = this.getWorld().getRegistryKey().getValue().toString();
+        if (!dim.equals(lastDimension)) {
+            boolean known = lastDimension != null; // 刚生成/刚加载时 lastDimension 为空,静默记录不喊话
+            lastDimension = dim;
+            if (known && dimensionTalkCooldown <= 0) {
+                dimensionTalkCooldown = 20 * 60;
+                switch (dim) {
+                    case "minecraft:the_nether" -> sayDelayed("下界……跟紧点,这地方不讲道理。");
+                    case "minecraft:the_end" -> sayDelayed("末地?!你可真敢带我来。");
+                    case "minecraft:overworld" -> sayDelayed("呼,回来了。还是这边看着舒坦。");
+                    default -> { }
+                }
+            }
+        }
+        if (this.isOnFire() && fireTalkCooldown <= 0 && this.isAlive()) {
+            fireTalkCooldown = 20 * 30;
+            sayDelayed("烫烫烫!没事,打完再说!");
         }
     }
 
@@ -639,6 +730,7 @@ public class FrendEntity extends PathAwareEntity {
             nbt.putInt("HomeZ", homePos.getZ());
             nbt.putString("HomeDim", homeDimension);
         }
+        if (lastDimension != null) nbt.putString("LastDim", lastDimension); // v0.9 跨维度复制实体后风味话状态不丢
         // 背包:拷贝到 DefaultedList 再走原版 Inventories(与 yongye/AccessoryStorage 同款写法)
         DefaultedList<ItemStack> list = DefaultedList.ofSize(inventory.size(), ItemStack.EMPTY);
         for (int i = 0; i < inventory.size(); i++) list.set(i, inventory.getStack(i));
@@ -663,6 +755,7 @@ public class FrendEntity extends PathAwareEntity {
             homePos = new BlockPos(nbt.getInt("HomeX"), nbt.getInt("HomeY"), nbt.getInt("HomeZ"));
             homeDimension = nbt.getString("HomeDim");
         }
+        if (nbt.contains("LastDim")) lastDimension = nbt.getString("LastDim");
         if (nbt.contains("FrendInventory")) {
             DefaultedList<ItemStack> list = DefaultedList.ofSize(inventory.size(), ItemStack.EMPTY);
             Inventories.readNbt(nbt.getCompound("FrendInventory"), list, this.getWorld().getRegistryManager());

@@ -230,3 +230,23 @@
 
 **已销账**:ItemTags 包名(v0.1 起挂账)、GENERIC_EAT/ARROW_SHOOT 音效(v0.2/v0.8)、random 访问。
 **注意**:javac 一轮只报它解析到的错——这 7 个修完**必须再跑一次 build**,后面大概率还有下一批(渲染器 FrendRenderer 是全仓风险最高文件,一次都还没被编到报错,不代表它对)。
+
+---
+
+## 里程碑 10 / v0.9 — 下界适应:交战规则 + 自卫反击 + 跨维度跟随
+
+**目标**:带它下下界不添乱、不送死、不走丢。
+
+**交战规则修正**(下界地雷):僵尸猪灵在代码里是 `ZombieEntity` 子类 → v0.3 的"僵尸系主动清怪"白名单会误伤这只**中立生物**,打一只全族暴走。豁免:`instanceof ZombifiedPiglinEntity` 直接排除主动攻击;它先动手走自卫路径。猪灵(Piglin,穿金甲那种)本来就不在白名单里,不用动。
+
+**自卫反击**(v0.3~v0.8 一直存在的地雷,这次顺路发现顺路修——不算违反"先写完",这是 v0.9 主题的一部分):以前 frend 被白名单外的怪打(疣猪兽/烈焰人/岩浆怪/被惹怒的猪灵群),只会喊疼不还手,站桩挨打到死。现在 `FrendEntity#damage` → `combatGoal.onSelfHurt(attacker)` 注入目标;`canStart` 里注入检查**提到模式门槛之前**——自卫在任何模式生效(STAY 站桩、GO_HOME 走路上被拱也还手)。红线原样:被玩家打绝不还手、不打同类。配置 `selfDefense`(默认开)。
+
+**跨维度跟随**:`getOwnerPlayer` 走 `world.getPlayerByUuid`,主人进下界后本维度查无此人 → frend 原地发呆到天荒地老。新增 `getOwnerPlayerAnywhere()`(server.getPlayerManager 全服查),FOLLOW 模式每 2s 检查,**连续两次不在才追**(主人进门折返不白跑),经 `FabricDimensions.teleport` 过去,落地喊"等等我,这就来!"。配置 `crossDimensionFollow`(默认开)。
+- **关键坑**:非玩家实体换维度是**复制实体**(旧的销毁、新维度重建,走完整 NBT 读写——背包/记忆/装备自动带走)。teleport 的**返回值**才是活着的那只,传送后不能再碰 this,喊话用返回值喊。
+- `lastDimension` 进 NBT(`LastDim`),不然每次过门风味话状态清零。
+
+**风味**:换维度说一句(下界/末地/回主世界各一句,60s 冷却,刚生成时静默不喊);着火喊一声(30s 冷却)。
+
+**没动的**(评估过不用动):火把双光照条件在下界天然成立(天空光恒 0,方块光主导),行为正确;家维度守卫 v0.2 就有;岩浆/火寻路禁区 v0.6 全局生效;下界绯红/诡异菌柄在 #logs 里,砍树任务白吃这个福利。
+
+**【待编译验证】新增**:`FabricDimensions.teleport` 泛型签名(fabric-dimensions-v1,全量 fabric-api 自带)、`TeleportTarget(Vec3d, Vec3d, float, float)` 1.21.1 构造(1.21.2+ 该 API 大改为 Entity#teleportTo,如报错优先查这里)、`Entity#getServer`、`PlayerManager#getPlayer(UUID)`、`ZombifiedPiglinEntity` 类路径(net.minecraft.entity.mob)。

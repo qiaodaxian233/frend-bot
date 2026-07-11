@@ -32,6 +32,8 @@
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
 
+m10(v0.9 下界适应):交战规则修正(ZombifiedPiglin 是 ZombieEntity 子类会被白名单误伤→instanceof 豁免,中立不惹)+自卫反击 onSelfHurt(damage→注入目标,canStart 注入检查提到模式门槛前=任何模式还手;修 v0.3 起站桩挨打地雷;红线不打玩家/同类照旧)+跨维度跟随(getOwnerPlayerAnywhere 走 PlayerManager 全服查/每 2s 检查连续 2 次不在才追/FabricDimensions.teleport;关键坑:非玩家实体换维度=复制实体,teleport 返回值才是活的,喊话用返回值;lastDimension 进 NBT)+换维度风味话 60s 冷却+着火喊话 30s 冷却;评估不用动:火把双光照下界天然正确/家维度守卫 v0.2 已有/岩浆禁区 v0.6 全局/菌柄在 #logs 白吃;config v7→v8 selfDefense/crossDimensionFollow;新增待编译验证:FabricDimensions.teleport 泛型/TeleportTarget 四参构造(1.21.2+大改,报错查 DEVLOG m10)/Entity#getServer/PlayerManager#getPlayer(UUID);编译清账#1 已完成(ItemTags 包名/GENERIC_EAT/getRandom),等第二轮 build 报错。 · 上一里程碑
+
 m9(v0.8 弓箭远程):距离换武器(>9 格有弓有箭换弓/<4 格换近战,滞回 4~9 防抖+20tick 换械冷却,对调不覆盖)+射击循环(setCurrentHand 拉弓可见/站桩蓄力 20tick/骷髅同款弹道 水平距离×0.2 抛物补偿/散布 6 固定/射后冷却 30tick/耗 ItemTags.ARROWS)+没箭喊一次换白刃+超 combatRange 或看不见先收弓;顺手修 autoEquipBestWeapon 覆盖式吃装备历史隐患(三处改对调+弓入不乱换白名单);已知欠账:箭异步击杀不进战绩(pending 对账修法排后);config v6→v7 rangedEnabled;新增待编译验证:createArrowProjectile 四参/setVelocity 五参/getBodyY/ENTITY_ARROW_SHOOT/copyWithCount;仍未沙箱编译。 · 上一里程碑
 
 m8(v0.7 装备与外观):autoEquipArmorAndShield(盾→空副手就拿;甲→空槽就穿/比 getProtection 更硬才换/换下回包/包满落地;道谢 60s 冷却;age%40==20 与武器扫描错开)+渲染挂 ArmorFeatureRenderer 四参构造(ArmorEntityModel+PLAYER_INNER/OUTER_ARMOR,照抄原版 PlayerEntityRenderer,渲染仍是全仓最高风险区)+一件不昧(构造器 setEquipmentDropChance 六槽 2.0f 死亡必掉不折耐久+dropAllItems 追加剥装备=解散归还)+持久化白嫖 HandItems/ArmorItems 原版 NBT;config v5→v6 autoEquipArmor;新增待编译验证:getSlotType/getProtection/setEquipmentDropChance/dropStack/ArmorFeatureRenderer 构造;仍未沙箱编译。 · 上一里程碑

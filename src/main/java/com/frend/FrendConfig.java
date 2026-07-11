@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 7;
+    public static final int CURRENT_CONFIG_VERSION = 8;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -149,6 +149,12 @@ public class FrendConfig {
     // ===== v0.8 弓箭远程 =====
     /** 远程战斗:包里有弓有箭,目标远就拉弓,近了自动换回剑斧。 */
     public boolean rangedEnabled = true;
+
+    // ===== v0.9 下界适应 =====
+    /** 自卫反击:被任何非玩家生物打了就还手(任何模式都生效;不打玩家不打同类的红线不变)。 */
+    public boolean selfDefense = true;
+    /** 跨维度跟随:主人进下界/末地后,跟随中的 frend 自动追过去。 */
+    public boolean crossDimensionFollow = true;
 
     public static FrendConfig get() {
         if (INSTANCE == null) load();
