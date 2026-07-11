@@ -190,6 +190,19 @@ public class FrendEntity extends PathAwareEntity {
     public void setOwner(PlayerEntity player) {
         this.ownerUuid = player.getUuid();
         memory.initFirstMet(this.getWorld().getTime()); // 相识时刻只记第一次
+        // v0.18 灵魂:有档就接——只灌进"白纸"(新召的),不覆盖已经活过的
+        if (FrendConfig.get().soulEnabled && memory.isFresh()) {
+            net.minecraft.nbt.NbtCompound soul = com.frend.system.FrendSoul.load(player.getUuid());
+            if (soul != null && soul.contains("Memory")) {
+                memory.fromNbt(soul.getCompound("Memory"));
+                memory.rebaseTo(this.getWorld().getTime(), soul.getLong("DaysSnapshot"));
+                if (soul.contains("Name")) {
+                    this.setCustomName(Text.literal(soul.getString("Name")));
+                    this.setCustomNameVisible(true);
+                }
+                sayDelayed("……是你!哈,真的是你。换了个天地也没关系——咱们的事,我一件都没忘。");
+            }
+        }
     }
 
     public FrendMemory getMemory() { return memory; }
@@ -597,10 +610,30 @@ public class FrendEntity extends PathAwareEntity {
             this.heal((float) c.regenAmount);
         }
 
+        // v0.18 灵魂定期存盘(5 分钟一次;死亡/解散/主人下线另有即时存)
+        if (c.soulEnabled && ownerUuid != null && this.age % 6000 == 5999) {
+            com.frend.system.FrendSoul.save(this);
+        }
+
         // 每秒检查一次主人状态
         if (this.age % 20 == 0) {
             PlayerEntity owner = getOwnerPlayer();
             if (owner != null && owner.isAlive()) {
+                // v0.18 重逢:你上线后第一次走到它跟前,它按分别的天数问候(久别的那几句,慢慢听)
+                if (c.soulEnabled && ownerUuid != null
+                        && this.squaredDistanceTo(owner) < c.chatRadius * c.chatRadius) {
+                    Long awayDays = com.frend.system.FrendSoul.popReunion(ownerUuid);
+                    if (awayDays != null) {
+                        sayDelayed(com.frend.system.FrendSoul.reunionLine(awayDays));
+                        if (awayDays >= 7) { // 久别是大事,记进一生
+                            getMemory().record(this.getWorld().getTime(),
+                                    "你离开了 " + awayDays + " 天,我一直在等");
+                        }
+                    }
+                    // 相识纪念日(10/100/365,一生各一次)
+                    String ann = getMemory().anniversaryLine(this.getWorld().getTime());
+                    if (ann != null) sayDelayed(ann);
+                }
                 // v0.15 捡回来的遗物,见面全数奉还(4 格内)
                 if (hasSalvage() && this.squaredDistanceTo(owner) < 16.0) {
                     giveSalvageBack(owner);
@@ -633,7 +666,11 @@ public class FrendEntity extends PathAwareEntity {
                         && this.squaredDistanceTo(owner) < 64.0
                         && this.random.nextFloat() < 0.05f) { // 冷却结束后平均再等约 20 秒才开口
                     ambientCooldown = c.ambientChatCooldownSeconds * 20;
-                    sayDelayed(AMBIENT_LINES[this.random.nextInt(AMBIENT_LINES.length)]);
+                    // v0.18 学话:两成概率蹦一句跟你学的口头禅——朋友待久了说话都像
+                    String learned = c.phraseLearning && this.random.nextFloat() < 0.2f
+                            ? memory.randomLearnedPhrase(this.random) : null;
+                    sayDelayed(learned != null ? learned
+                            : AMBIENT_LINES[this.random.nextInt(AMBIENT_LINES.length)]);
                 }
             }
         }
@@ -791,7 +828,13 @@ public class FrendEntity extends PathAwareEntity {
     @Override
     public void onDeath(DamageSource source) {
         if (!this.getWorld().isClient) {
-            say("对不起……我先走一步,东西都留给你。");
+            // v0.18 灵魂让这句话成真了:死亡带不走记忆,再召出来的还是它
+            if (FrendConfig.get().soulEnabled && ownerUuid != null) {
+                com.frend.system.FrendSoul.save(this);
+                say("别慌……我们还会再见的。你的事我都记在魂里了——东西先留给你,回头见。");
+            } else {
+                say("对不起……我先走一步,东西都留给你。");
+            }
         }
         super.onDeath(source);
     }

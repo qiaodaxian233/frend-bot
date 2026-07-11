@@ -34,6 +34,7 @@ public class Frend implements ModInitializer {
         FrendScheduler.register();
         FrendChatHandler.register();
         FrendCommands.register();
+        com.frend.system.FrendSoul.register(); // v0.18 灵魂:跨存档档案 + 离线计时 + 重逢问候
 
         // v0.3:主人被攻击 → 附近 frend 支援
         registerOwnerHurtListener();

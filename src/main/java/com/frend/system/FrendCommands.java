@@ -186,7 +186,8 @@ public final class FrendCommands {
 
     private static int dismiss(CommandContext<ServerCommandSource> ctx) {
         return forEachOwned(ctx, f -> {
-            f.say("那……我先回去啦,东西都还你。想我了再 /frend summon。");
+            com.frend.system.FrendSoul.save(f); // v0.18 走之前把魂存好,下次召回来还是它
+            f.say("那……我先回去啦,东西都还你。想我了就召我——我记着咱们的一切呢。");
             f.dropAllItems();
             f.discard();
         });

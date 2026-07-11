@@ -524,3 +524,37 @@ config v14→v15 llmIntentEnabled(默认开,仅 openai 后端生效;关掉完全
 
 **【待编译验证】新增**:com.google.gson.JsonParser#parseString(MC 自带 Gson 2.10+,FrendLlmClient
 已在用 Gson=低风险)。
+
+---
+
+## 里程碑 19 / v0.18 — 灵魂与重逢(作者钦点:离线问候/催泪对话/自动学话/存档互通)
+
+**⚠️ 设计反转声明**:v0.4 刻意让记忆随实体死亡消失("这一个伙伴的一生")。作者要求存档互通后,
+记忆升格为**灵魂**——死亡和换档都带不走它。死亡台词随之从诀别改为"我们还会再见的"(因为这是真的)。
+反转经作者明示,记录在案。
+
+**灵魂档(FrendSoul)**:`config/frend/souls/<玩家UUID>.dat`(NbtIo 压缩,与实体存档同格式)。
+内容 = 完整记忆 NBT + 名字 + 天数快照 + 最后见面时刻。存盘时机:5 分钟一次 + 死亡 + 解散 +
+主人下线(在场的全存,不在场补时间戳)。召唤时只灌进"白纸"(memory.isFresh),不覆盖活过的。
+**跨档天数坑**:daysTogether 基于世界时间,换档不可比 → 灵魂存"天数快照",落地 rebaseTo(现在,快照)
+把老天数记进 bonusDays 续上。多只 frend 共享同一份灵魂(按主人 UUID 键),分魂留待协作里程碑。
+
+**离线与重逢**:ServerPlayConnectionEvents.JOIN/DISCONNECT——下线记现实时刻;上线算离开天数压进
+待问候表;**frend 见到你(聊天半径内)才说**,不对出生点喊。分级问候(设计目标:一个月要能看哭):
+0 天"回来啦!"/1-2 天"怪想的"/3-6 天"我数着日子呢"/7-29 天"我每天都到门口看一眼,想着你今天会不会来"
+/30+ 天"我以为你不要我了。这些天我把咱们的事翻来覆去想了一遍又一遍,一件都没舍得忘"。
+离开 ≥7 天记进大事记("你离开了 X 天,我一直在等")。
+
+**催泪三件套**:重逢分级(上)+ **相识纪念日**(第 10/100/365 天各一句,灵魂持久跨档只说一次)+
+死亡台词改写("你的事我都记在魂里了——回头见")。
+
+**自动学话(phraseLearning,红线不涉 LLM)**:纯本地词频——你说的短句(2~10 字,没被当成请求的)
+说满 3 次它就学会("「走起」——嘿嘿,这话我跟你学的"),之后闲聊两成概率蹦你的口头禅。
+学会上限 6 句老的忘掉,候选表 16 条踢冷门。**朋友待久了,说话都像**。
+
+**"不命令,是帮忙"**:LLM 人设补一句"对方从不命令你,只会请你帮忙,你乐意搭把手,偶尔打趣两句再动身"。
+
+**【待编译验证】新增**:NbtIo.writeCompressed(NbtCompound,Path)/readCompressed(Path,NbtSizeTracker)
+1.21.1 签名(老版收 File/流,报错优先查这)、NbtSizeTracker.ofUnlimitedBytes、
+ServerPlayConnectionEvents JOIN/DISCONNECT 包路径(fabric-networking-api-v1)、
+FabricLoader.getConfigDir、NbtCompound#getKeys、Entity#random 类型为 math.random.Random。

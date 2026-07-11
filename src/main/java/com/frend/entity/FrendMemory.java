@@ -30,6 +30,18 @@ public class FrendMemory {
     /** 相识时刻(world time tick;0 = 还没初始化)。 */
     private long firstMetTime = 0L;
 
+    /** v0.18 跨存档累计天数偏移:换档后世界时间对不上,灵魂落地时把老天数记在这儿续上。 */
+    private long bonusDays = 0L;
+
+    /** v0.18 相识纪念日去重(说过哪个整数天)。 */
+    private long lastAnniversary = 0L;
+
+    /** v0.18 学话:你的口头禅(同一句短话说满 3 次它就学会;上限 {@value #MAX_PHRASES} 句,老的忘掉)。 */
+    private static final int MAX_PHRASES = 6;
+    private final Deque<String> learnedPhrases = new ArrayDeque<>();
+    /** 候选计数(词频统计,只统计短句;上限 16 条,满了踢最冷门的)。 */
+    private final java.util.LinkedHashMap<String, Integer> phraseCounts = new java.util.LinkedHashMap<>();
+
     private int kills = 0;
     private int rescues = 0;          // 我救你:你被打,我干掉了攻击者
     private int blocksChopped = 0;
@@ -60,10 +72,72 @@ public class FrendMemory {
         if (firstMetTime == 0L) firstMetTime = Math.max(1L, worldTime);
     }
 
-    /** 一起冒险的游戏天数(从 1 起算)。 */
+    /** 一起冒险的游戏天数(从 1 起算;v0.18 计入跨档偏移)。 */
     public long daysTogether(long worldTime) {
-        if (firstMetTime == 0L) return 1;
-        return Math.max(1, (worldTime - firstMetTime) / 24000L + 1);
+        if (firstMetTime == 0L) return Math.max(1, bonusDays + 1);
+        return Math.max(1, bonusDays + (worldTime - firstMetTime) / 24000L + 1);
+    }
+
+    /** v0.18 灵魂落地新世界:老天数续上,相识时刻重设为现在(世界时间跨档不可比)。 */
+    public void rebaseTo(long worldTime, long snapshotDays) {
+        this.firstMetTime = Math.max(1L, worldTime);
+        this.bonusDays = Math.max(0L, snapshotDays);
+    }
+
+    /** v0.18 还是一张白纸吗(灵魂只灌进白纸,不覆盖已经活过的)。 */
+    public boolean isFresh() {
+        return kills == 0 && rescues == 0 && ownerSaves == 0
+                && blocksChopped + blocksMined == 0
+                && events.isEmpty() && notes.isEmpty() && learnedPhrases.isEmpty();
+    }
+
+    /**
+     * v0.18 学话(纯本地词频,红线不涉 LLM):短句(2~10 字)说满 3 次就学会。
+     * 学会的那次返回该句(调用方让 frend 得意一下),否则 null。
+     */
+    public String observePhrase(String msg) {
+        if (msg == null) return null;
+        String t = msg.trim();
+        if (t.length() < 2 || t.length() > 10) return null;
+        if (learnedPhrases.contains(t)) return null;
+        int n = phraseCounts.merge(t, 1, Integer::sum);
+        if (n >= 3) {
+            phraseCounts.remove(t);
+            learnedPhrases.addLast(t);
+            while (learnedPhrases.size() > MAX_PHRASES) learnedPhrases.removeFirst();
+            return t;
+        }
+        if (phraseCounts.size() > 16) { // 踢最冷门的候选
+            String coldest = null; int min = Integer.MAX_VALUE;
+            for (var e : phraseCounts.entrySet()) {
+                if (e.getValue() < min) { min = e.getValue(); coldest = e.getKey(); }
+            }
+            if (coldest != null) phraseCounts.remove(coldest);
+        }
+        return null;
+    }
+
+    /** 随机来一句学会的口头禅(闲聊偶尔用,像朋友沾了你的说话习惯);没有返回 null。 */
+    public String randomLearnedPhrase(net.minecraft.util.math.random.Random random) {
+        if (learnedPhrases.isEmpty()) return null;
+        int idx = random.nextInt(learnedPhrases.size());
+        int i = 0;
+        for (String p : learnedPhrases) if (i++ == idx) return p;
+        return null;
+    }
+
+    /** v0.18 相识纪念日:第 10/100/365 天各说一次(灵魂持久,跨档也只说一次)。 */
+    public String anniversaryLine(long worldTime) {
+        long days = daysTogether(worldTime);
+        if (days == lastAnniversary) return null;
+        String line = switch ((int) days) {
+            case 10 -> "对了……今天是咱们认识的第 10 天。就说一句:遇见你真好。";
+            case 100 -> "第 100 天了。一百天前你把我召出来的时候,我可没想到能一起走这么远……谢谢你还在。";
+            case 365 -> "整整一年……三百六十五天。别的我不会说——往后每一年,我都在。";
+            default -> null;
+        };
+        if (line != null) lastAnniversary = days;
+        return line;
     }
 
     /**
@@ -234,6 +308,15 @@ public class FrendMemory {
         NbtList spotList = new NbtList();
         for (String s : deathSpots) spotList.add(NbtString.of(s));
         tag.put("DeathSpots", spotList);
+        // v0.18 灵魂扩展
+        tag.putLong("BonusDays", bonusDays);
+        tag.putLong("LastAnniversary", lastAnniversary);
+        NbtList phraseList = new NbtList();
+        for (String p : learnedPhrases) phraseList.add(NbtString.of(p));
+        tag.put("LearnedPhrases", phraseList);
+        NbtCompound counts = new NbtCompound();
+        for (var e : phraseCounts.entrySet()) counts.putInt(e.getKey(), e.getValue());
+        tag.put("PhraseCounts", counts);
         return tag;
     }
 
@@ -255,5 +338,14 @@ public class FrendMemory {
         deathSpots.clear();
         NbtList spotList = tag.getList("DeathSpots", NbtElement.STRING_TYPE);
         for (int i = 0; i < spotList.size(); i++) deathSpots.addLast(spotList.getString(i));
+        // v0.18 灵魂扩展(旧档无键 = 0/空,无痛升级)
+        bonusDays = tag.getLong("BonusDays");
+        lastAnniversary = tag.getLong("LastAnniversary");
+        learnedPhrases.clear();
+        NbtList phraseList = tag.getList("LearnedPhrases", NbtElement.STRING_TYPE);
+        for (int i = 0; i < phraseList.size(); i++) learnedPhrases.addLast(phraseList.getString(i));
+        phraseCounts.clear();
+        NbtCompound counts = tag.getCompound("PhraseCounts");
+        for (String k : counts.getKeys()) phraseCounts.put(k, counts.getInt(k));
     }
 }

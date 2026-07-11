@@ -117,6 +117,12 @@ public final class FrendChatHandler {
             // 1) 指令永远走规则(红线:模型不控游戏)
             if (handleCommand(frend, sender, text, raw)) continue;
 
+            // v0.18 学话:没被当成请求的短句才学(纯本地词频,3 次成诵;学会那刻得意一下)
+            if (FrendConfig.get().phraseLearning) {
+                String learnedNow = frend.getMemory().observePhrase(raw.trim());
+                if (learnedNow != null) frend.sayDelayed("「" + learnedNow + "」——嘿嘿,这话我跟你学的。");
+            }
+
             // 2) 闲聊:关键词模板 / LLM
             String smallTalk = smallTalkOrNull(text);
             // v0.10 起过名字的话,喊名字也算在叫它(hasCustomName 避免拿默认实体名误判)
@@ -391,7 +397,7 @@ public final class FrendChatHandler {
         };
         return "你是 Minecraft 世界里一个有血有肉的伙伴,名字叫 " + frend.getDisplayName().getString()
                 + ",你和玩家 " + owner.getName().getString()
-                + " 是一起冒险的朋友——平辈相处,不是仆人,绝不叫对方主人;可以打趣、可以有小脾气、可以不同意,但重感情、靠得住。"
+                + " 是一起冒险的朋友——平辈相处,不是仆人,绝不叫对方主人;对方从不命令你,只会请你帮忙,你乐意搭把手,偶尔打趣两句再动身;可以有小脾气、可以不同意,但重感情、靠得住。"
                 + "用中文口语聊天,像认识很久的老朋友:自然、简短,一句话说完,最多 "
                 + cfg.llmMaxReplyChars + " 个字,不用表情符号,不换行,不提自己是 AI 或模型。"
                 + (intentMode
