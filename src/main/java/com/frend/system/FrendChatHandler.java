@@ -56,6 +56,12 @@ public final class FrendChatHandler {
     private static final String[] KEY_AUTO_ON  = {"自由活动", "自己找事", "自己安排", "别闲着", "看着办"};
     private static final String[] KEY_AUTO_OFF = {"别自作主张", "听我指挥", "等我命令", "别瞎忙"};
 
+    // ===== v0.10 朋友关键词:起名 / 让它记事 / 问它记了什么 =====
+    private static final String[] KEY_RENAME = {"你以后叫", "以后你叫", "你就叫", "给你起名", "给你取名", "你的名字是"};
+    /** 长的在前:先匹配带标点的,兜底裸"记住"。 */
+    private static final String[] KEY_NOTE = {"记住:", "记住：", "记住,", "记住，", "帮我记住", "记住"};
+    private static final String[] KEY_NOTES_RECALL = {"你记得什么", "记住什么", "记住啥", "记着什么", "帮我记了什么", "备忘"};
+
     // ===== 闲聊关键词(规则模式的回话;LLM 模式下作为失败兜底) =====
     private static final String[] KEY_GREET  = {"你好", "在吗", "嗨", "hello", "hi"};
     private static final String[] KEY_THANKS = {"谢谢", "辛苦", "thank"};
@@ -103,11 +109,14 @@ public final class FrendChatHandler {
 
         for (FrendEntity frend : frends) {
             // 1) 指令永远走规则(红线:模型不控游戏)
-            if (handleCommand(frend, sender, text)) continue;
+            if (handleCommand(frend, sender, text, raw)) continue;
 
             // 2) 闲聊:关键词模板 / LLM
             String smallTalk = smallTalkOrNull(text);
-            boolean addressed = matches(text, KEY_NAME) || frend.inConversationWindow();
+            // v0.10 起过名字的话,喊名字也算在叫它(hasCustomName 避免拿默认实体名误判)
+            boolean calledByName = frend.hasCustomName()
+                    && text.contains(frend.getDisplayName().getString().toLowerCase());
+            boolean addressed = matches(text, KEY_NAME) || calledByName || frend.inConversationWindow();
 
             if (llmBackend && (addressed || smallTalk != null)) {
                 frend.rememberChat("user", raw);
@@ -124,7 +133,29 @@ public final class FrendChatHandler {
     }
 
     /** 指令关键词。命中返回 true(已处理)。 */
-    private static boolean handleCommand(FrendEntity frend, ServerPlayerEntity sender, String text) {
+    private static boolean handleCommand(FrendEntity frend, ServerPlayerEntity sender, String text, String raw) {
+        // v0.10 起名/记事必须最先判:名字和笔记内容里可能夹带工作关键词
+        // ("给你起名砍树侠"/"记住:明天去挖矿"),放后面会被干活关键词截胡。内容从 raw 取,保留大小写。
+        if (matches(text, KEY_NOTES_RECALL)) { // 问"记住什么"要抢在裸"记住"解析之前
+            frend.sayDelayed(frend.getMemory().notesLine());
+            return true;
+        }
+        String newName = extractAfter(raw, KEY_RENAME);
+        if (newName != null) {
+            frend.renameBy(stripTail(newName));
+            return true;
+        }
+        String note = extractAfter(raw, KEY_NOTE);
+        if (note != null) {
+            note = stripLead(stripTail(note));
+            if (note.isEmpty() || note.length() > 60) {
+                frend.sayDelayed("要记什么?说\"记住:xxx\",60 个字以内。");
+            } else {
+                frend.getMemory().addNote(note);
+                frend.sayDelayed("记下了,忘不了。");
+            }
+            return true;
+        }
         // 干活类先判:"回家存箱子"含"回家",存箱子必须抢在 HOME 前
         if (matches(text, KEY_DEPOSIT)) {
             frend.startTask(new com.frend.entity.task.DepositTask(frend), "好,我回家把东西存箱子里。");
@@ -217,17 +248,19 @@ public final class FrendChatHandler {
     /** 人设 + 当前游戏状态(只给必要信息,回复要求短句口语)。 */
     private static String persona(FrendEntity frend, ServerPlayerEntity owner) {
         FrendConfig cfg = FrendConfig.get();
-        boolean day = frend.getWorld().getTimeOfDay() % 24000L < 13000L; // 【待编译验证】World#getTimeOfDay
+        boolean day = frend.getWorld().getTimeOfDay() % 24000L < 13000L;
         String mode = switch (frend.getMode()) {
-            case FOLLOW -> "跟着主人走";
+            case FOLLOW -> "跟着朋友走";
             case STAY -> "原地待命";
             case GO_HOME -> "赶路回家";
             case WORK -> "干活中(" + (frend.currentTaskName() != null ? frend.currentTaskName() : "收尾") + ")";
         };
-        return "你是 Minecraft 世界里的陪伴 NPC,名字叫 frend,主人是玩家 " + owner.getName().getString()
-                + ",你们正一起冒险。用中文口语聊天,像熟悉的老朋友:自然、简短,一句话说完,最多 "
+        return "你是 Minecraft 世界里一个有血有肉的伙伴,名字叫 " + frend.getDisplayName().getString()
+                + ",你和玩家 " + owner.getName().getString()
+                + " 是一起冒险的朋友——平辈相处,不是仆人,绝不叫对方主人;可以打趣、可以有小脾气、可以不同意,但重感情、靠得住。"
+                + "用中文口语聊天,像认识很久的老朋友:自然、简短,一句话说完,最多 "
                 + cfg.llmMaxReplyChars + " 个字,不用表情符号,不换行,不提自己是 AI 或模型。"
-                + "你没有能力执行任何游戏操作;主人要是想让你做事,提醒他说关键词:跟我来/停下/过来/回家/报告状态。"
+                + "你没有能力执行任何游戏操作;朋友想让你搭把手,提醒他说关键词:跟我来/停下/过来/回家/报告状态。"
                 + "你当前状态:血量 " + (int) frend.getHealth() + "/" + (int) frend.getMaxHealth()
                 + "," + mode + ",现在是" + (day ? "白天" : "夜里") + "。"
                 + frend.getMemory().llmSummary(frend.getWorld().getTime()) // v0.4:共同经历入上下文,让闲聊有"往事"
@@ -257,6 +290,39 @@ public final class FrendChatHandler {
             if (text.contains(k)) return true;
         }
         return false;
+    }
+
+    /** v0.10 找到第一个命中的前缀关键词,返回其后的内容;都没命中返回 null。按数组顺序,长关键词放前面。 */
+    private static String extractAfter(String raw, String[] keys) {
+        for (String k : keys) {
+            int i = raw.indexOf(k);
+            if (i >= 0) return raw.substring(i + k.length());
+        }
+        return null;
+    }
+
+    /** 去掉口语尾巴:吧/了/哦/呀/标点/引号/空白。 */
+    private static String stripTail(String s) {
+        String t = s.trim();
+        while (!t.isEmpty()) {
+            char c = t.charAt(t.length() - 1);
+            if ("吧了哦呀啊。.!！?？~\"”“'‘’「」『』,，".indexOf(c) >= 0 || Character.isWhitespace(c)) {
+                t = t.substring(0, t.length() - 1);
+            } else break;
+        }
+        return t.trim();
+    }
+
+    /** 去掉开头残留的冒号/逗号/空白(裸"记住"匹配时内容前常带标点)。 */
+    private static String stripLead(String s) {
+        String t = s.trim();
+        while (!t.isEmpty()) {
+            char c = t.charAt(0);
+            if (":：,，、\"“'‘".indexOf(c) >= 0 || Character.isWhitespace(c)) {
+                t = t.substring(1);
+            } else break;
+        }
+        return t.trim();
     }
 
     private static String pick(String[] pool) {

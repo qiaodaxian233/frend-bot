@@ -250,3 +250,49 @@
 **没动的**(评估过不用动):火把双光照条件在下界天然成立(天空光恒 0,方块光主导),行为正确;家维度守卫 v0.2 就有;岩浆/火寻路禁区 v0.6 全局生效;下界绯红/诡异菌柄在 #logs 里,砍树任务白吃这个福利。
 
 **【待编译验证】新增**:`FabricDimensions.teleport` 泛型签名(fabric-dimensions-v1,全量 fabric-api 自带)、`TeleportTarget(Vec3d, Vec3d, float, float)` 1.21.1 构造(1.21.2+ 该 API 大改为 Entity#teleportTo,如报错优先查这里)、`Entity#getServer`、`PlayerManager#getPlayer(UUID)`、`ZombifiedPiglinEntity` 类路径(net.minecraft.entity.mob)。
+
+---
+
+## 编译清账 #2 — v0.9 跨维度两个错(2026-07-11)
+
+第二轮 build 报 2 错,都在跨维度传送:
+
+1. **fabric-dimensions-v1 已不存在**:该模块在 fabric-api 0.105.0+1.21.1 里已被移除(不是没引依赖,是上游删了)。
+2. **TeleportTarget 构造签名**:javac 把可用构造器直接吐出来了——这套 1.21.1 yarn 里就是**新式签名**
+   `TeleportTarget(ServerWorld, Vec3d pos, Vec3d velocity, float yaw, float pitch, PostDimensionTransition)`
+   (之前按"1.21.2 才大改"的记忆写了旧式四参,记忆错了,**以编译器输出为准**)。
+
+修法:弃 Fabric API,走原版 `Entity#teleportTo(new TeleportTarget(world, pos, Vec3d.ZERO, yaw, pitch, entity -> {}))`——
+PostDimensionTransition 是函数式接口,空 lambda 零副作用,也避免赌 NO_OP 常量名。
+**剩一个待验证**:`Entity#teleportTo(TeleportTarget)` 方法名本身(若报错找 moveToWorld/changeDimension 系)。
+反向销账:NbtElement.STRING_TYPE(两轮编译均未报错,注释已摘牌)。
+
+---
+
+## 里程碑 11 / v0.10 — 朋友,不是仆人(作者钦点方向)
+
+**作者原话**:"我要做的不是主人和仆人,是朋友。记忆系统。"这不是加功能,是掰正精神内核——
+以往的记忆系统单向记"我为你做了什么",朋友之间的账是**双向**的。
+
+**台词去主仆化**(全部玩家可见文本):"别想伤我的主人!"→"别想伤我朋友!";"主人,我包快满了"→"哎,我包快满了";
+"我的主人"兜底称呼→"我朋友";击杀百只感慨去"主人"。代码标识符 owner 保留(纯内部,改了徒增 churn),注释按需。
+
+**LLM 人设重写**:明写"你们是一起冒险的朋友——平辈相处,不是仆人,绝不叫对方主人;可以打趣、可以有小脾气、
+可以不同意,但重感情、靠得住"。自称改用 getDisplayName(起过名就自称新名字)。
+
+**双向记忆**(FrendMemory 三个新维度,全走既有 NBT 链路):
+- **你救我**(ownerSaves):AFTER_DEATH 监听——死的怪 target 正指向某 frend 且凶手是它那位朋友 → 记账+道谢
+  (第一次必说"这份情我记一辈子",之后 60s 冷却;记忆永远记,嘴上不刷屏);
+- **你送我的**(gifts):穿装备道谢处顺手计数;
+- **你让我记的事**(notes):聊天说"记住:xxx"存笔记(≤60 字,FIFO 8 条),"你记得什么"复述,
+  **LLM 人设注入笔记**——闲聊时它会自然提起你特意交代的事,这才是老朋友。
+
+**起名字**:`/frend name <名字>` 或聊天"你以后叫XX/你就叫XX/给你起名XX"。走原版 CustomName(头顶显示、
+say 前缀自动变、NBT 白嫖持久化),记忆记一笔大事,之后**喊它的名字也算在叫它**(对话触发)。
+
+**解析顺序的坑**:起名/笔记必须在 handleCommand **最前面**判——"给你起名砍树侠"/"记住:明天去挖矿"里
+夹带工作关键词,放后面就被砍树/挖矿截胡开工了;"记住什么"(问话)要抢在裸"记住"(记事)之前。
+内容从 raw 原文取(保留大小写),清洗头尾口语标点。
+
+**【待编译验证】新增**:Entity#teleportTo 方法名、StringArgumentType.greedyString、Entity#hasCustomName/
+setCustomNameVisible、MobEntity#getTarget 在 AFTER_DEATH 时点是否仍持值(逻辑风险非编译风险:怪死时 target 可能已清,救我判定漏记的话改用 getAttacking 或 attacker 缓存,预案记此)。

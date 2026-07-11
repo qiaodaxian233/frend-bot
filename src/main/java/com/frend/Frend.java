@@ -37,6 +37,7 @@ public class Frend implements ModInitializer {
 
         // v0.3:主人被攻击 → 附近 frend 支援
         registerOwnerHurtListener();
+        registerOwnerSavedFrendListener();
 
         LOGGER.info("[frend] 初始化完成。/frend summon 召唤你的朋友。");
     }
@@ -64,5 +65,21 @@ public class Frend implements ModInitializer {
                     }
                     return true;
                 });
+    }
+
+    /**
+     * v0.10 朋友,不是仆人:情谊得是双向的。
+     * 监听生物死亡——死的怪当时正在攻击某只 frend(target 指向它),而下手的是它那位朋友(owner)
+     * → 这就是"你救了我",frend 记情 + 道谢。
+     * Fabric ServerLivingEntityEvents.AFTER_DEATH。
+     */
+    private void registerOwnerSavedFrendListener() {
+        ServerLivingEntityEvents.AFTER_DEATH.register((LivingEntity entity, DamageSource source) -> {
+            if (!(entity instanceof net.minecraft.entity.mob.MobEntity mob)) return;
+            if (!(source.getAttacker() instanceof net.minecraft.server.network.ServerPlayerEntity player)) return;
+            if (!(mob.getTarget() instanceof FrendEntity frend)) return;
+            if (!frend.isOwner(player)) return; // 路人帮忙不记账,朋友的账才记
+            frend.onOwnerSavedMe(mob);
+        });
     }
 }

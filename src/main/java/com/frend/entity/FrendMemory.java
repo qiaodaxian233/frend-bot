@@ -31,9 +31,18 @@ public class FrendMemory {
     private long firstMetTime = 0L;
 
     private int kills = 0;
-    private int rescues = 0;          // 救主:主人被打,frend 干掉了攻击者
+    private int rescues = 0;          // 我救你:你被打,我干掉了攻击者
     private int blocksChopped = 0;
     private int blocksMined = 0;
+
+    // ===== v0.10 朋友,不是仆人:情谊是双向的 =====
+    /** 你救我:攻击我的怪被你干掉了。朋友之间,我记得我为你挡的刀,更记得你为我拔的剑。 */
+    private int ownerSaves = 0;
+    /** 你送我的装备次数(穿戴道谢时计)。 */
+    private int gifts = 0;
+    /** 你让我记住的事("记住:xxx",FIFO 上限 {@value #MAX_NOTES} 条)。 */
+    private static final int MAX_NOTES = 8;
+    private final Deque<String> notes = new ArrayDeque<>();
 
     /** 最近击杀的怪物名(口头回忆用)。 */
     private String lastKillName = "";
@@ -65,18 +74,48 @@ public class FrendMemory {
                         .thenSay("这是我帮你打倒的第一只怪,记下了!");
             case 10  -> record(worldTime, "击杀满 10").thenSay("不知不觉都打倒 10 只怪了,我越来越熟练了。");
             case 50  -> record(worldTime, "击杀满 50").thenSay("50 只怪!咱俩也算身经百战了。");
-            case 100 -> record(worldTime, "击杀满 100").thenSay("一百只!主人,给我立个碑吧,哈哈。");
+            case 100 -> record(worldTime, "击杀满 100").thenSay("一百只!给我立个碑吧,哈哈。");
             case 500 -> record(worldTime, "击杀满 500").thenSay("五百了……这些年跟你走南闯北,值了。");
             default  -> null;
         };
     }
 
-    /** 记一次救主(击杀了正在攻击主人的怪)。返回一句感慨给 frend 说。 */
+    /** 记一次我救你(击杀了正在攻击你的怪)。返回一句感慨给 frend 说。 */
     public String recordRescue(String mobName, long worldTime) {
         rescues++;
-        record(worldTime, "从" + (mobName == null ? "怪物" : mobName) + "手里救下主人");
+        record(worldTime, "从" + (mobName == null ? "怪物" : mobName) + "手里拉了你一把");
         if (rescues == 1) return "刚才好险……以后有我在,不会让它们碰到你。";
-        return null; // 后续救主由战斗喊话覆盖,不额外煽情
+        return null; // 后续由战斗喊话覆盖,不额外煽情
+    }
+
+    /**
+     * v0.10 记一次你救我(打我的怪被你干掉了)。返回该说的感谢,后续感谢频率由调用方冷却控制。
+     */
+    public String recordOwnerSave(String mobName, long worldTime) {
+        ownerSaves++;
+        record(worldTime, "你从" + (mobName == null ? "怪物" : mobName) + "手里救了我");
+        if (ownerSaves == 1) return "你刚……救了我?这份情我记一辈子。";
+        return "多谢!又欠你一回,咱俩这算扯平了又欠上。";
+    }
+
+    /** v0.10 你送我装备(穿戴道谢处计数,不额外说话)。 */
+    public void recordGift() { gifts++; }
+
+    /** v0.10 你让我记住的事。超上限挤掉最旧的。 */
+    public void addNote(String note) {
+        notes.addLast(note);
+        while (notes.size() > MAX_NOTES) notes.removeFirst();
+    }
+
+    public boolean hasNotes() { return !notes.isEmpty(); }
+
+    /** 复述你让我记的事(口头,一句话)。 */
+    public String notesLine() {
+        if (notes.isEmpty()) return "你还没让我记过什么事——说\"记住:xxx\"我就记下。";
+        StringBuilder sb = new StringBuilder("你让我记着的事:");
+        int i = 1;
+        for (String n : notes) sb.append(i++ == 1 ? "" : ";").append(n);
+        return sb.toString();
     }
 
     public void addChopped(int n) { blocksChopped += n; }
@@ -94,20 +133,23 @@ public class FrendMemory {
 
     // ===================== 输出 =====================
 
-    /** 口头回忆一行(规则聊天 / /frend memory 用)。 */
+    /** 口头回忆一行(规则聊天 / /frend memory 用)。朋友口吻:说我为你做的,也说你为我做的。 */
     public String recapLine(long worldTime) {
         StringBuilder sb = new StringBuilder();
         sb.append("咱俩一起冒险第 ").append(daysTogether(worldTime)).append(" 天了。");
         if (kills > 0) {
             sb.append("我帮你干掉了 ").append(kills).append(" 只怪");
-            if (rescues > 0) sb.append(",危急关头救过你 ").append(rescues).append(" 次");
+            if (rescues > 0) sb.append(",危急关头拉过你 ").append(rescues).append(" 把");
             sb.append(";");
+        }
+        if (ownerSaves > 0) {
+            sb.append("你也救过我 ").append(ownerSaves).append(" 次——这个我可没忘;");
         }
         if (blocksChopped + blocksMined > 0) {
             sb.append("砍了 ").append(blocksChopped).append(" 块木头、挖了 ")
               .append(blocksMined).append(" 块矿石;");
         }
-        if (kills == 0 && blocksChopped + blocksMined == 0) {
+        if (kills == 0 && ownerSaves == 0 && blocksChopped + blocksMined == 0) {
             sb.append("虽然还没干出什么大事,但好日子在后头。");
         } else if (!events.isEmpty()) {
             sb.append("最难忘的是").append(events.peekLast()).append("。");
@@ -119,7 +161,8 @@ public class FrendMemory {
     public String llmSummary(long worldTime) {
         StringBuilder sb = new StringBuilder();
         sb.append("你们相识 ").append(daysTogether(worldTime)).append(" 个游戏日,你累计击杀 ")
-          .append(kills).append(" 只怪、救主 ").append(rescues).append(" 次、砍木 ")
+          .append(kills).append(" 只怪、危急关头救过对方 ").append(rescues).append(" 次、对方也救过你 ")
+          .append(ownerSaves).append(" 次、砍木 ")
           .append(blocksChopped).append(" 块、挖矿 ").append(blocksMined).append(" 块。");
         if (!events.isEmpty()) {
             sb.append("近期大事:");
@@ -128,13 +171,18 @@ public class FrendMemory {
                 sb.append(it.next()).append(";");
             }
         }
+        if (!notes.isEmpty()) {
+            sb.append("对方特意让你记住的事(聊天时可自然提起):");
+            for (String n : notes) sb.append(n).append(";");
+        }
         return sb.toString();
     }
 
     /** 状态汇报里的战绩短句(空战绩返回空串)。 */
     public String statusBrief() {
         if (kills == 0 && rescues == 0) return "";
-        return "战绩:击杀 " + kills + (rescues > 0 ? "、救主 " + rescues : "") + "。";
+        return "战绩:击杀 " + kills + (rescues > 0 ? "、救你 " + rescues + " 次" : "")
+                + (ownerSaves > 0 ? ",你救我 " + ownerSaves + " 次" : "") + "。";
     }
 
     // ===================== NBT =====================
@@ -147,9 +195,14 @@ public class FrendMemory {
         tag.putInt("Chopped", blocksChopped);
         tag.putInt("Mined", blocksMined);
         tag.putString("LastKill", lastKillName);
+        tag.putInt("OwnerSaves", ownerSaves);
+        tag.putInt("Gifts", gifts);
         NbtList list = new NbtList();
         for (String e : events) list.add(NbtString.of(e));
         tag.put("Events", list);
+        NbtList noteList = new NbtList();
+        for (String n : notes) noteList.add(NbtString.of(n));
+        tag.put("Notes", noteList);
         return tag;
     }
 
@@ -160,8 +213,13 @@ public class FrendMemory {
         blocksChopped = tag.getInt("Chopped");
         blocksMined = tag.getInt("Mined");
         lastKillName = tag.getString("LastKill");
+        ownerSaves = tag.getInt("OwnerSaves"); // 旧档无此键返回 0,无痛升级
+        gifts = tag.getInt("Gifts");
         events.clear();
-        NbtList list = tag.getList("Events", NbtElement.STRING_TYPE); // 【待编译验证】NbtElement.STRING_TYPE 常量
+        NbtList list = tag.getList("Events", NbtElement.STRING_TYPE);
         for (int i = 0; i < list.size(); i++) events.addLast(list.getString(i));
+        notes.clear();
+        NbtList noteList = tag.getList("Notes", NbtElement.STRING_TYPE);
+        for (int i = 0; i < noteList.size(); i++) notes.addLast(noteList.getString(i));
     }
 }

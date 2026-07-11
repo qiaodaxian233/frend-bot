@@ -86,6 +86,8 @@ public class FrendEntity extends PathAwareEntity {
     private String lastDimension = null;
     private int dimensionTalkCooldown = 0;
     private int fireTalkCooldown = 0;
+    /** v0.10 你救我道谢的独立冷却(记忆永远记账,嘴上不刷屏)。 */
+    private int saveThanksCooldown = 0;
 
     // ===== 聊天记忆(不落盘):LLM 上下文 + "对话延续窗口" + 请求节流 =====
     private final java.util.ArrayDeque<String[]> chatHistory = new java.util.ArrayDeque<>();
@@ -360,6 +362,7 @@ public class FrendEntity extends PathAwareEntity {
         }
         if (equippedSomething && equipTalkCooldown <= 0) {
             equipTalkCooldown = 20 * 60;
+            getMemory().recordGift(); // v0.10 朋友记账:你给我的,我记得
             sayDelayed("有装备当然要穿上——谢啦,感觉稳多了!");
         }
     }
@@ -384,7 +387,7 @@ public class FrendEntity extends PathAwareEntity {
 
     private String ownerName() {
         PlayerEntity owner = getOwnerPlayer();
-        return owner != null ? owner.getName().getString() : "我的主人";
+        return owner != null ? owner.getName().getString() : "我朋友";
     }
 
     /**
@@ -425,6 +428,7 @@ public class FrendEntity extends PathAwareEntity {
         if (equipTalkCooldown > 0) equipTalkCooldown--;
         if (dimensionTalkCooldown > 0) dimensionTalkCooldown--;
         if (fireTalkCooldown > 0) fireTalkCooldown--;
+        if (saveThanksCooldown > 0) saveThanksCooldown--;
 
         // ===== v0.9 下界适应:跨维度追随 + 换维度风味话 + 着火喊话 =====
         if (this.age % 20 == 0) {
@@ -536,14 +540,41 @@ public class FrendEntity extends PathAwareEntity {
     }
 
     /**
+     * v0.10 朋友,不是仆人:攻击我的怪被你干掉了——你救了我。
+     * 由 Frend.java 的 AFTER_DEATH 监听调用。记忆永远记账;道谢带冷却(60s)防刷屏,第一次必说。
+     */
+    public void onOwnerSavedMe(net.minecraft.entity.mob.MobEntity attacker) {
+        if (this.getWorld().isClient || !this.isAlive()) return;
+        String line = getMemory().recordOwnerSave(attacker.getName().getString(), this.getWorld().getTime());
+        if (line != null && saveThanksCooldown <= 0) {
+            saveThanksCooldown = 20 * 60;
+            sayDelayed(line);
+        }
+    }
+
+    /**
+     * v0.10 起名字:朋友之间怎么能没名字。改 CustomName(原版机制,头顶显示、say 前缀自动跟着变、
+     * NBT 白嫖持久化),记忆里记一笔大事。
+     */
+    public void renameBy(String name) {
+        String clean = name == null ? "" : name.trim();
+        if (clean.isEmpty() || clean.length() > 16) {
+            sayDelayed("这名字……要不换个短点的?16 个字以内。");
+            return;
+        }
+        this.setCustomName(Text.literal(clean));
+        this.setCustomNameVisible(true);
+        getMemory().record(this.getWorld().getTime(), "你给我起了名字:" + clean);
+        sayDelayed("「" + clean + "」……好名字!从今天起我就叫这个了。");
+    }
+
+    /**
      * v0.9 跨维度追随:主人进了别的维度(下界/末地/回主世界),跟随中的 frend 追过去。
      * 每 2s 检查一次,连续两次(≈4s)主人都不在本维度才追——主人进门马上折返时不白跑。
      *
      * 【关键坑】非玩家实体换维度在 MC 里是"复制实体":旧实体销毁,目标维度里造一个新的
-     * (走完整 NBT 读写,所以背包/记忆/装备都会原样带过去)。teleport 返回的才是"活着的那个",
+     * (走完整 NBT 读写,所以背包/记忆/装备都会原样带过去)。teleportTo 返回的才是"活着的那个",
      * 传送之后不能再碰 this——说话必须用返回值说。
-     * 【待编译验证】FabricDimensions.teleport 泛型签名 + TeleportTarget(Vec3d pos, Vec3d velocity,
-     * float yaw, float pitch) 1.21.1 构造(1.21.2+ 改成了 Entity#teleportTo,报错查 DEVLOG m10)。
      */
     private void tryFollowAcrossDimension() {
         if (getOwnerPlayer() != null) { ownerAwayChecks = 0; return; } // 主人就在本维度,没事
@@ -555,13 +586,18 @@ public class FrendEntity extends PathAwareEntity {
         if (++ownerAwayChecks < 2) return; // 宽限一轮
         ownerAwayChecks = 0;
         this.getNavigation().stop();
-        FrendEntity moved = net.fabricmc.fabric.api.dimension.v1.FabricDimensions.teleport(
-                this,
-                (net.minecraft.server.world.ServerWorld) owner.getWorld(),
+        // 编译实证(清账#2):这套 1.21.1 映射里 TeleportTarget 是新式签名
+        // TeleportTarget(ServerWorld, Vec3d pos, Vec3d velocity, float yaw, float pitch, PostDimensionTransition),
+        // 且 fabric-dimensions-v1 模块在 fabric-api 0.105 里已移除 → 走原版 Entity#teleportTo。
+        // PostDimensionTransition 是函数式接口,传空 lambda 零副作用。
+        // 【待编译验证】Entity#teleportTo(TeleportTarget) 方法名——若报错找 moveToWorld/changeDimension 系。
+        net.minecraft.entity.Entity movedRaw = this.teleportTo(
                 new net.minecraft.world.TeleportTarget(
+                        (net.minecraft.server.world.ServerWorld) owner.getWorld(),
                         owner.getPos(), net.minecraft.util.math.Vec3d.ZERO,
-                        this.getYaw(), this.getPitch()));
-        if (moved != null) {
+                        this.getYaw(), this.getPitch(),
+                        entity -> { }));
+        if (movedRaw instanceof FrendEntity moved) {
             moved.sayDelayed("等等我,这就来!");
         }
     }

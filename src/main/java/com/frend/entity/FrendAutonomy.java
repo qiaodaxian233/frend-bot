@@ -75,7 +75,7 @@ public class FrendAutonomy {
             if (suggestCooldown <= 0 && inventoryFullness() >= c.autonomyDepositAtFullness
                     && frend.hasHome()) {
                 suggestCooldown = 20 * 600; // 10 分钟一次,不唠叨
-                frend.sayDelayed("主人,我包快满了……找个机会让我回家存一趟?说\"存箱子\"就行。");
+                frend.sayDelayed("哎,我包快满了……找个机会让我回家存一趟?说\"存箱子\"就行。");
             }
             return;
         }

@@ -434,7 +434,7 @@ public class FrendCombatGoal extends Goal {
     // ===== 战斗喊话 =====
     private static final String[] FIGHT_LINES = {
             "拿命来!",
-            "别想伤我的主人!",
+            "别想伤我朋友!",
             "就这?",
             "滚开!",
             "你找死!",

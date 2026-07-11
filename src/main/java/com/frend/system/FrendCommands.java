@@ -60,6 +60,12 @@ public final class FrendCommands {
                         .then(CommandManager.literal("status").executes(FrendCommands::status))
                         .then(CommandManager.literal("memory").executes(FrendCommands::memory))
 
+                        // v0.10 朋友,不是仆人:起名字。聊天说"你以后叫XX"也行。
+                        .then(CommandManager.literal("name")
+                                .then(CommandManager.argument("名字", com.mojang.brigadier.arguments.StringArgumentType.greedyString())
+                                        .executes(ctx -> forEachOwned(ctx, f ->
+                                                f.renameBy(com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "名字"))))))
+
                         .then(CommandManager.literal("work")
                                 .then(CommandManager.literal("chop").executes(ctx -> forEachOwned(ctx, f ->
                                         f.startTask(new com.frend.entity.task.ChopTreeTask(f), "收到,砍树去!"))))
