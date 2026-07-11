@@ -333,3 +333,35 @@ setCustomNameVisible、MobEntity#getTarget 在 AFTER_DEATH 时点是否仍持值
 
 **【待编译验证】新增**:DamageSource#getSource(直接实体,区别于 getAttacker)、
 ItemEntity(World,x,y,z,ItemStack) 构造、Entity#getEyeY、Vec3d#multiply/add——均为常见 API,风险低。
+
+---
+
+## 里程碑 13 / v0.12 — 路径规划:像人一样走路(作者点题)
+
+四块拼图,解决"跟不上/进不去/游不动/走不远":
+
+**1. 开门关门**(最伤"朋友感"的就是跟你回家却卡在门口):
+- 寻路层:`MobNavigation#setCanPathThroughDoors(true)` + `getNodeMaker().setCanOpenDoors(true)`(村民同款,关着的木门算可走);
+- 行为层:`LongDoorInteractGoal(this, true)` 优先级 5——路过木门伸手开,走过去**随手带上**(第二参 true = 延迟关门,卫道士突袭时用的就是这个 Goal)。配置 openDoors(v10,默认开)。
+- 【待编译验证】LongDoorInteractGoal 类名(Yarn;报错找 DoorInteractGoal 子类)。
+
+**2. 游泳意愿**:WATER 寻路惩罚默认 8——它会把河当障碍绕半个地图。清零 + `setCanSwim(true)`,
+该游就游;已有的 SwimGoal(优先级 0)保证浮起来不淹死。铁门/活板门不碰(打不开的本来就不算路)。
+
+**3. 卡死自救**(mobTick 每 2s 查一次,配置 stuckRescue):导航进行中却没挪窝(位移 <0.5 格)→
+第一次**跳一下**(多半是一格台阶/栅栏);还卡 → `getNavigation().stop()` 停表,Goal 下 tick 换条路重算,
+说一句"这路不好走……我绕绕"(60s 冷却)。拉弓站桩/挖矿敲方块时导航是 idle 的,不会误判。
+最终兜底不变:跟随的 48 格传送保险丝。
+
+**4. 长途分段寻路**(navigateSmart):原版寻路搜索范围被 FOLLOW_RANGE(48)钉死,"回家"在几百格外时
+一次算不出完整路径直接摆烂——v0.2 起"这条路我走不过去"多半是这个。先试直达,不行就朝目标方向取
+**24 格中间点**走一段;回家 Goal 每秒重发、任务 moveTo 反复调用,一段一段蹭过去。近距(≤24)找不到路
+不硬分段——那是地形问题,交给卡死自救。接入两处:FrendGoHomeGoal、FrendTask#moveTo(所有任务共用,
+存箱子回家那条长腿受益最大)。
+
+**评估过不做**:爬梯子(要仿蜘蛛改 isClimbing,收益小改动深);搭路/拆墙过障(Baritone 路线,
+拆错一块玩家建筑就是灾难,红线宁缺勿滥)。
+
+**【待编译验证】新增**:LongDoorInteractGoal、EntityNavigation#getNodeMaker/PathNodeMaker#setCanOpenDoors、
+MobNavigation#setCanPathThroughDoors、EntityNavigation#setCanSwim、MobEntity#getJumpControl#setActive——
+除 Goal 类名外均为常见导航 API。

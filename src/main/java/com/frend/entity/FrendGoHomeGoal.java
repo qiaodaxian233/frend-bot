@@ -62,7 +62,7 @@ public class FrendGoHomeGoal extends Goal {
 
         if (--repathCooldown <= 0) {
             repathCooldown = 20;
-            frend.getNavigation().startMovingTo(home.getX() + 0.5, home.getY(), home.getZ() + 0.5, 1.1);
+            frend.navigateSmart(home.getX() + 0.5, home.getY(), home.getZ() + 0.5, 1.1); // v0.12 长途分段:家在几百格外也走得回
         }
 
         // 无进展检测:距离没有变得更近就累计,太久放弃

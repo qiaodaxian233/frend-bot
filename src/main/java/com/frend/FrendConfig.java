@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 9;
+    public static final int CURRENT_CONFIG_VERSION = 10;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -161,6 +161,12 @@ public class FrendConfig {
     public boolean shareFoodWhenOwnerLow = true;
     /** 记住你倒下过的地方,路过时提醒你小心。 */
     public boolean deathSpotWarn = true;
+
+    // ===== v0.12 路径规划 =====
+    /** 路过木门自己开、走过随手关(村民同款寻路)。 */
+    public boolean openDoors = true;
+    /** 卡死自救:走路卡住先跳一下,还不行就换条路重算。 */
+    public boolean stuckRescue = true;
 
     public static FrendConfig get() {
         if (INSTANCE == null) load();

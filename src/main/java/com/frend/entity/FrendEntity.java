@@ -91,6 +91,13 @@ public class FrendEntity extends PathAwareEntity {
     /** v0.11 "你上回在这栽过"提醒的冷却。 */
     private int deathSpotWarnCooldown = 0;
 
+    // ===== v0.12 卡死自救 =====
+    /** 上次卡死检查时的位置(每 2s 对比一次)。 */
+    private net.minecraft.util.math.Vec3d lastStuckCheckPos = net.minecraft.util.math.Vec3d.ZERO;
+    /** 连续"在导航却没挪窝"的次数:1 跳一下 → 2 停表让 Goal 重规划+说一句 → 3 归零重来。 */
+    private int stuckCount = 0;
+    private int stuckTalkCooldown = 0;
+
     // ===== 聊天记忆(不落盘):LLM 上下文 + "对话延续窗口" + 请求节流 =====
     private final java.util.ArrayDeque<String[]> chatHistory = new java.util.ArrayDeque<>();
     private long lastTalkMillis = 0;          // frend 上次开口时间
@@ -130,6 +137,15 @@ public class FrendEntity extends PathAwareEntity {
         this.setPathfindingPenalty(net.minecraft.entity.ai.pathing.PathNodeType.LAVA, -1.0f);
         this.setPathfindingPenalty(net.minecraft.entity.ai.pathing.PathNodeType.DAMAGE_FIRE, -1.0f);
         this.setPathfindingPenalty(net.minecraft.entity.ai.pathing.PathNodeType.DANGER_FIRE, 16.0f);
+        // ===== v0.12 路径规划:像人一样走路 =====
+        // 水不再是障碍(默认惩罚 8 会绕着河走;0 = 该游就游,SwimGoal 保证浮起来不淹死)
+        this.setPathfindingPenalty(net.minecraft.entity.ai.pathing.PathNodeType.WATER, 0.0f);
+        this.getNavigation().setCanSwim(true);
+        // 关着的木门算路(村民同款);真正伸手开门靠 initGoals 里的开门 Goal
+        if (this.getNavigation() instanceof net.minecraft.entity.ai.pathing.MobNavigation nav) {
+            nav.setCanPathThroughDoors(true);
+        }
+        this.getNavigation().getNodeMaker().setCanOpenDoors(true);
         // ===== v0.7 装备必掉:身上穿的拿的都是主人给的,死了一件不昧(>1 = 必掉且不折耐久) =====
         // 【待编译验证】MobEntity#setEquipmentDropChance;只设六个经典槽位,不碰 1.20.5+ 新增的 BODY
         for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.MAINHAND, EquipmentSlot.OFFHAND,
@@ -157,6 +173,11 @@ public class FrendEntity extends PathAwareEntity {
         this.goalSelector.add(2, combatGoal);           // 战斗优先于跟随
         this.goalSelector.add(3, new FrendFollowOwnerGoal(this));
         this.goalSelector.add(4, new FrendGoHomeGoal(this));
+        // v0.12 开门关门:路过木门自己开,走过去随手带上(第二参 true = 延迟关门)。
+        // 【待编译验证】Yarn 类名 LongDoorInteractGoal(卫道士突袭时用的就是它);报错找 DoorInteractGoal 子类/OpenDoorGoal
+        if (FrendConfig.get().openDoors) {
+            this.goalSelector.add(5, new net.minecraft.entity.ai.goal.LongDoorInteractGoal(this, true));
+        }
         this.goalSelector.add(6, new LookAtEntityGoal(this, PlayerEntity.class, 8.0f));
         this.goalSelector.add(7, new LookAroundGoal(this));
     }
@@ -459,6 +480,32 @@ public class FrendEntity extends PathAwareEntity {
         if (fireTalkCooldown > 0) fireTalkCooldown--;
         if (saveThanksCooldown > 0) saveThanksCooldown--;
         if (deathSpotWarnCooldown > 0) deathSpotWarnCooldown--;
+        if (stuckTalkCooldown > 0) stuckTalkCooldown--;
+
+        // ===== v0.12 卡死自救:导航进行中但 2s 没挪窝 → 跳 → 停表重算 =====
+        // 拉弓站桩/干活敲方块时导航是停的(isIdle),不会误判。最终兜底仍是跟随的 48 格传送保险丝。
+        if (c.stuckRescue && this.age % 40 == 0) {
+            if (!this.getNavigation().isIdle()) {
+                if (this.getPos().squaredDistanceTo(lastStuckCheckPos) < 0.25) {
+                    stuckCount++;
+                    if (stuckCount == 1) {
+                        this.getJumpControl().setActive(); // 多半是一格台阶/栅栏,跳一下就过
+                    } else if (stuckCount >= 2) {
+                        this.getNavigation().stop(); // 停表,Goal 下 tick 换条路重新规划
+                        stuckCount = 0;
+                        if (stuckTalkCooldown <= 0) {
+                            stuckTalkCooldown = 20 * 60;
+                            sayDelayed("这路不好走……我绕绕。");
+                        }
+                    }
+                } else {
+                    stuckCount = 0;
+                }
+            } else {
+                stuckCount = 0;
+            }
+            lastStuckCheckPos = this.getPos();
+        }
 
         // ===== v0.9 下界适应:跨维度追随 + 换维度风味话 + 着火喊话 =====
         if (this.age % 20 == 0) {
@@ -734,6 +781,22 @@ public class FrendEntity extends PathAwareEntity {
     }
 
     // ===================== 说话 =====================
+
+    /**
+     * v0.12 长途分段寻路:原版寻路的搜索范围被 FOLLOW_RANGE(48)钉死,回家/存箱子几百格远时
+     * 一次算不出完整路径就直接摆烂。这里先试直达;不行就朝目标方向取 24 格中间点走一段,
+     * 调用方(回家 Goal 每秒重发 / 任务 moveTo)反复调用,一段一段蹭过去。
+     * 近距离(≤24 格)找不到路不硬分段——那是地形问题,交给卡死自救和传送保险丝。
+     */
+    public void navigateSmart(double x, double y, double z, double speed) {
+        if (this.getNavigation().startMovingTo(x, y, z, speed) && !this.getNavigation().isIdle()) return;
+        double dx = x - this.getX(), dz = z - this.getZ();
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist <= 24) return;
+        double mx = this.getX() + dx / dist * 24;
+        double mz = this.getZ() + dz / dist * 24;
+        this.getNavigation().startMovingTo(mx, this.getY(), mz, speed);
+    }
 
     /** 立即向聊天半径内玩家广播一句话,格式 &lt;frend&gt; xxx。 */
     public void say(String msg) {

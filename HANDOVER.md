@@ -32,6 +32,8 @@
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
 
+m13(v0.12 路径规划,作者点题):开门关门(MobNavigation#setCanPathThroughDoors+NodeMaker#setCanOpenDoors 村民同款寻路+LongDoorInteractGoal(this,true) 优先级5 路过开走过带上,类名待验证)+游泳意愿(WATER 惩罚 8→0+setCanSwim,SwimGoal 兜底不淹)+卡死自救(mobTick 每 2s:导航中位移<0.5→跳一下→再卡 stop 停表让 Goal 重算+"我绕绕"60s 冷却;拉弓/挖矿 nav idle 不误判;48 格传送保险丝仍是终极兜底)+长途分段寻路 navigateSmart(FOLLOW_RANGE 钉死搜索范围→直达失败取 24 格中间点分段蹭,接入 GoHomeGoal+FrendTask#moveTo 全任务受益;≤24 格不硬分段交给自救);评估不做:爬梯子/搭路拆墙(拆错玩家建筑=灾难);config v9→v10 openDoors/stuckRescue。 · 上一里程碑
+
 m12(v0.11 有来有往)🎉首次全绿 build:基于 4ddbce8 三轮 build 零报错,m1~m11 全部挂账 API 编译实证销账(含最高风险 FrendRenderer),残留【待编译验证】注释视为已验证顺手摘牌不扫仓;m12——分你吃的(你低血→朝你扔一份食物,ItemEntity 定向初速,最后一口也给"我扛得住",findFoodSlot 与 tryEat 同源重构,8 格内,config shareFoodWhenOwnerLow)+记你栽跟头的地方(AFTER_DEATH 玩家分支 128 格在场→坐标 FIFO3"维度|x|y|z"入 NBT+路过 16 格提醒 5min 冷却+刚死压 2min 不烦跑尸,config deathSpotWarn)+箭账清偿(v0.8 欠账:凶器 PersistentProjectile+射手 frend→recordKill/Rescue,与白刃收尾检测零冲突);AFTER_DEATH 三合一分发(你倒下/箭杀/你救我,分支互斥);config v8→v9。 · 上一里程碑
 
 m11(v0.10 朋友不是仆人,作者钦点方向)+编译清账#2:清账——fabric-dimensions-v1 在 fabric-api 0.105 已删+TeleportTarget 实为新式六参(ServerWorld+PostDimensionTransition,javac 实证,"1.21.2 才改"记忆错误)→改原版 Entity#teleportTo+空 lambda(teleportTo 方法名待验证);m11——全部台词去主仆化(owner 标识符保留)+LLM 人设重写(平辈朋友/绝不叫主人/自称 getDisplayName)+双向记忆(ownerSaves 你救我:AFTER_DEATH 监听死怪 target 指向 frend 且凶手=owner,首次必谢后续 60s 冷却;gifts 送装计数;notes 记事"记住:xxx"≤60 字 FIFO8+LLM 注入)+起名(/frend name greedyString+聊天"你以后叫X",CustomName 白嫖,喊名字算 addressed)+解析顺序坑(起名/笔记置顶防工作关键词截胡,"记住什么"抢在裸"记住"前);逻辑风险预案:AFTER_DEATH 时点 mob.getTarget 可能已清→漏记则改 getAttacking/缓存。 · 上一里程碑

@@ -52,8 +52,8 @@ public abstract class FrendTask {
             frend.getNavigation().stop();
             return true;
         }
-        frend.getNavigation().startMovingTo(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5,
-                FrendConfig.get().followSpeed);
+        frend.navigateSmart(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5,
+                FrendConfig.get().followSpeed); // v0.12 长途分段:存箱子回家那腿再远也走得动
         stuckTicks++;
         return false;
     }
