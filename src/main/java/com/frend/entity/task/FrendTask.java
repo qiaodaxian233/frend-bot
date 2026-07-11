@@ -99,4 +99,25 @@ public abstract class FrendTask {
             breakProgress = 0;
         }
     }
+
+    /**
+     * v0.6 挖掘避险,v0.13 提炼到基类共用(MineTask/TunnelTask):
+     * 安全返回 null,不敢挖返回原因(给嘴上解释用)。
+     * 规则:六邻贴岩浆不挖(挖穿被浇);头顶两格悬沙/沙砾不挖(挖了被砸)。
+     */
+    protected String miningDanger(BlockPos p) {
+        if (!FrendConfig.get().mineSafetyEnabled) return null;
+        var world = frend.getWorld();
+        for (net.minecraft.util.math.Direction dir : net.minecraft.util.math.Direction.values()) {
+            if (world.getFluidState(p.offset(dir)).isIn(net.minecraft.registry.tag.FluidTags.LAVA)) {
+                return "那块贴着岩浆,我不碰,命要紧。";
+            }
+        }
+        for (int dy = 1; dy <= 2; dy++) {
+            if (world.getBlockState(p.up(dy)).getBlock() instanceof net.minecraft.block.FallingBlock) {
+                return "那块头顶悬着沙子,挖了会被砸,跳过。";
+            }
+        }
+        return null;
+    }
 }

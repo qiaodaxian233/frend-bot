@@ -42,6 +42,9 @@ public final class FrendChatHandler {
     private static final String[] KEY_CHOP    = {"砍树", "砍点木头", "砍木头", "chop"};
     private static final String[] KEY_STONE   = {"挖石头", "挖点石头", "挖石"};
     private static final String[] KEY_ORE     = {"挖矿", "挖煤", "挖铁", "mine"};
+    // v0.13:必须比 KEY_ORE 先匹配("挖矿道"含"挖矿","挖钻石"不含但归下矿)
+    private static final String[] KEY_TUNNEL  = {"挖隧道", "打隧道", "挖矿道", "打矿道", "掘进", "tunnel"};
+    private static final String[] KEY_DEEP    = {"挖深矿", "下矿", "挖钻石", "去挖钻", "deep mine"};
     private static final String[] KEY_DEPOSIT = {"存箱子", "回家存", "存东西", "去存", "deposit"};
     private static final String[] KEY_WORKSTOP = {"收工", "别干了", "别挖了", "别砍了", "休息吧"};
 
@@ -163,6 +166,12 @@ public final class FrendChatHandler {
             frend.startTask(new com.frend.entity.task.ChopTreeTask(frend), "收到,砍树去!");
         } else if (matches(text, KEY_STONE)) {
             frend.startTask(new com.frend.entity.task.MineTask(frend, com.frend.entity.task.MineTask.Kind.STONE), "好,我去凿点石头。");
+        } else if (matches(text, KEY_TUNNEL)) {
+            frend.startTask(new com.frend.entity.task.TunnelTask(frend, com.frend.entity.task.TunnelTask.Kind.TUNNEL),
+                    "好,朝我脸冲的方向掘进,见矿顺手掏!");
+        } else if (matches(text, KEY_DEEP)) {
+            frend.startTask(new com.frend.entity.task.TunnelTask(frend, com.frend.entity.task.TunnelTask.Kind.DEEP),
+                    "下矿喽!挖楼梯下到矿层再直着掏,跟我后面别掉坑里。");
         } else if (matches(text, KEY_ORE)) {
             frend.startTask(new com.frend.entity.task.MineTask(frend, com.frend.entity.task.MineTask.Kind.ORE), "找煤铁去,有露头的都归咱。");
         } else if (matches(text, KEY_WORKSTOP) && frend.isWorking()) {

@@ -32,6 +32,8 @@
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
 
+m14(v0.13 挖矿路径规划):作者提 automodpack→查证为整合包同步工具无关挖矿,实指 Baritone,借思路不抄码(架构不同+LGPL);新 TunnelTask 双模式——TUNNEL 平巷(开工朝向取整 1x2 直巷上限 tunnelMaxLength=48)/DEEP 下矿(楼梯法进1降1断面3高到 deepMineTargetY=-58 转平巷,断面自上而下);红线四连(任一触发整条道收工,隧道有方向绕不开):白名单防拆家(BASE_STONE 系+圆石泥土沙砾+全矿种,白名单外="像有人修的")/v0.6 避险提炼至基类 miningDanger(MineTask 委托零行为变化)/渗水收工/挖穿溶洞不搭桥停工叫人;见矿顺手掏(破块扫六邻入队,只掏露头不追脉);掘进预算独立不受 maxBlocksPerJob 约束;入口 /frend work tunnel|deep+聊天关键词(TUNNEL/DEEP 必须排 KEY_ORE 前,"挖矿道"含"挖矿");config v10→v11。 · 上一里程碑
+
 m13(v0.12 路径规划,作者点题):开门关门(MobNavigation#setCanPathThroughDoors+NodeMaker#setCanOpenDoors 村民同款寻路+LongDoorInteractGoal(this,true) 优先级5 路过开走过带上,类名待验证)+游泳意愿(WATER 惩罚 8→0+setCanSwim,SwimGoal 兜底不淹)+卡死自救(mobTick 每 2s:导航中位移<0.5→跳一下→再卡 stop 停表让 Goal 重算+"我绕绕"60s 冷却;拉弓/挖矿 nav idle 不误判;48 格传送保险丝仍是终极兜底)+长途分段寻路 navigateSmart(FOLLOW_RANGE 钉死搜索范围→直达失败取 24 格中间点分段蹭,接入 GoHomeGoal+FrendTask#moveTo 全任务受益;≤24 格不硬分段交给自救);评估不做:爬梯子/搭路拆墙(拆错玩家建筑=灾难);config v9→v10 openDoors/stuckRescue。 · 上一里程碑
 
 m12(v0.11 有来有往)🎉首次全绿 build:基于 4ddbce8 三轮 build 零报错,m1~m11 全部挂账 API 编译实证销账(含最高风险 FrendRenderer),残留【待编译验证】注释视为已验证顺手摘牌不扫仓;m12——分你吃的(你低血→朝你扔一份食物,ItemEntity 定向初速,最后一口也给"我扛得住",findFoodSlot 与 tryEat 同源重构,8 格内,config shareFoodWhenOwnerLow)+记你栽跟头的地方(AFTER_DEATH 玩家分支 128 格在场→坐标 FIFO3"维度|x|y|z"入 NBT+路过 16 格提醒 5min 冷却+刚死压 2min 不烦跑尸,config deathSpotWarn)+箭账清偿(v0.8 欠账:凶器 PersistentProjectile+射手 frend→recordKill/Rescue,与白刃收尾检测零冲突);AFTER_DEATH 三合一分发(你倒下/箭杀/你救我,分支互斥);config v8→v9。 · 上一里程碑

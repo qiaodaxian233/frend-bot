@@ -115,27 +115,14 @@ public class MineTask extends FrendTask {
     }
 
     /**
-     * v0.6 挖掘避险:六邻有岩浆(挖穿被浇)或头顶两格内有沙/沙砾(挖了被砸)→ 不碰。
-     * 第一次因此跳块解释一句,之后沉默照跳。
+     * v0.6 挖掘避险(v0.13 起判定逻辑在基类 miningDanger,此处只管"解释一次"):
+     * 目标每次开挖前复查——邻块被挖开后环境会变。
      */
     private boolean safeToMine(BlockPos p) {
-        if (!FrendConfig.get().mineSafetyEnabled) return true;
-        var world = frend.getWorld();
-        // 六邻岩浆
-        for (Direction dir : Direction.values()) {
-            // 【待编译验证】World#getFluidState + FluidState#isIn(FluidTags.LAVA)
-            if (world.getFluidState(p.offset(dir)).isIn(net.minecraft.registry.tag.FluidTags.LAVA)) {
-                explainDangerOnce("那块贴着岩浆,我不碰,命要紧。");
-                return false;
-            }
-        }
-        // 头顶两格沙/沙砾(FallingBlock)
-        for (int dy = 1; dy <= 2; dy++) {
-            // 【待编译验证】FallingBlock instanceof 判断(Blocks.SAND/GRAVEL 的基类)
-            if (world.getBlockState(p.up(dy)).getBlock() instanceof net.minecraft.block.FallingBlock) {
-                explainDangerOnce("那块头顶悬着沙子,挖了会被砸,跳过。");
-                return false;
-            }
+        String danger = miningDanger(p);
+        if (danger != null) {
+            explainDangerOnce(danger);
+            return false;
         }
         return true;
     }

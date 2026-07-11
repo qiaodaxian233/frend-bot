@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 10;
+    public static final int CURRENT_CONFIG_VERSION = 11;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -167,6 +167,12 @@ public class FrendConfig {
     public boolean openDoors = true;
     /** 卡死自救:走路卡住先跳一下,还不行就换条路重算。 */
     public boolean stuckRescue = true;
+
+    // ===== v0.13 挖矿路径规划 =====
+    /** 隧道/下矿单次掘进步数上限(平巷每步 2 块,楼梯每步 3 块,不受 maxBlocksPerJob 约束)。 */
+    public int tunnelMaxLength = 48;
+    /** 下矿目标矿层(楼梯挖到这个 Y 再转平巷;1.18+ 钻石密集层约 -58)。 */
+    public int deepMineTargetY = -58;
 
     public static FrendConfig get() {
         if (INSTANCE == null) load();

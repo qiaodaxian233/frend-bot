@@ -73,6 +73,10 @@ public final class FrendCommands {
                                         f.startTask(new com.frend.entity.task.MineTask(f, com.frend.entity.task.MineTask.Kind.STONE), "好,我去凿点石头。"))))
                                 .then(CommandManager.literal("ore").executes(ctx -> forEachOwned(ctx, f ->
                                         f.startTask(new com.frend.entity.task.MineTask(f, com.frend.entity.task.MineTask.Kind.ORE), "找煤铁去,有露头的都归咱。"))))
+                                .then(CommandManager.literal("tunnel").executes(ctx -> forEachOwned(ctx, f ->
+                                        f.startTask(new com.frend.entity.task.TunnelTask(f, com.frend.entity.task.TunnelTask.Kind.TUNNEL), "好,朝我脸冲的方向掘进,见矿顺手掏!"))))
+                                .then(CommandManager.literal("deep").executes(ctx -> forEachOwned(ctx, f ->
+                                        f.startTask(new com.frend.entity.task.TunnelTask(f, com.frend.entity.task.TunnelTask.Kind.DEEP), "下矿喽!挖楼梯下到矿层再直着掏,跟我后面别掉坑里。"))))
                                 .then(CommandManager.literal("deposit").executes(ctx -> forEachOwned(ctx, f ->
                                         f.startTask(new com.frend.entity.task.DepositTask(f), "好,我回家把东西存箱子里。"))))
                                 .then(CommandManager.literal("stop").executes(ctx -> forEachOwned(ctx, f ->
