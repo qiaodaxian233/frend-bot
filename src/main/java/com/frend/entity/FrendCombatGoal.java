@@ -250,8 +250,8 @@ public class FrendCombatGoal extends Goal {
                 return; // 目标已死,下 tick 走丢失目标逻辑收尾
             }
             // 偶尔喊话
-            if (frend.random.nextFloat() < 0.08f) {
-                frend.sayDelayed(FIGHT_LINES[frend.random.nextInt(FIGHT_LINES.length)]);
+            if (frend.getRandom().nextFloat() < 0.08f) {
+                frend.sayDelayed(FIGHT_LINES[frend.getRandom().nextInt(FIGHT_LINES.length)]);
             }
         }
     }
@@ -368,7 +368,7 @@ public class FrendCombatGoal extends Goal {
         double g = Math.sqrt(d * d + f * f);
         arrow.setVelocity(d, e + g * 0.2, f, 1.6f, 6.0f);
         frend.getWorld().spawnEntity(arrow);
-        // 【待编译验证】SoundEvents.ENTITY_ARROW_SHOOT 是否 RegistryEntry(报错就加 .value())
+        // 已验证:纯 SoundEvent,不带 .value()
         frend.playSound(net.minecraft.sound.SoundEvents.ENTITY_ARROW_SHOOT, 1.0f, 1.0f);
         arrowStack.decrement(1); // 直接减背包里那组箭
         // 已知欠账(先写完后修):箭是异步击杀,现有记忆埋点只认 tryAttack 白刃,射死的怪暂不进战绩。DEVLOG 有记。

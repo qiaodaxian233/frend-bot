@@ -254,21 +254,21 @@ public class FrendEntity extends PathAwareEntity {
     /**
      * 从背包里找最好的武器(剑 > 斧)装到主手。
      * 主手已有武器时不替换(避免干活时把工具换走)。
-     * 【待编译验证】ItemTags.SWORDS / ItemTags.AXES — v0.1 DEVLOG 已列,同 MineTask。
+     * 已验证:ItemTags 在 net.minecraft.registry.tag 包(不是 item 包)。
      */
     public void autoEquipBestWeapon() {
         ItemStack main = this.getMainHandStack();
         // 主手已有剑/斧/弓,不动(弓是 v0.8 CombatGoal 按距离换上去的,别抢)
         if (!main.isEmpty()
-                && (main.isIn(net.minecraft.item.ItemTags.SWORDS)
-                    || main.isIn(net.minecraft.item.ItemTags.AXES)
+                && (main.isIn(net.minecraft.registry.tag.ItemTags.SWORDS)
+                    || main.isIn(net.minecraft.registry.tag.ItemTags.AXES)
                     || main.getItem() == net.minecraft.item.Items.BOW)) return;
 
         // 优先找剑
         for (int i = 0; i < inventory.size(); i++) {
             ItemStack s = inventory.getStack(i);
             if (s.isEmpty()) continue;
-            if (s.isIn(net.minecraft.item.ItemTags.SWORDS)) {
+            if (s.isIn(net.minecraft.registry.tag.ItemTags.SWORDS)) {
                 ItemStack old = this.getMainHandStack();
                 this.setStackInHand(Hand.MAIN_HAND, s.copy());
                 inventory.setStack(i, old.isEmpty() ? ItemStack.EMPTY : old.copy()); // 对调不覆盖,原主手物(火把/镐等)不消失
@@ -279,7 +279,7 @@ public class FrendEntity extends PathAwareEntity {
         for (int i = 0; i < inventory.size(); i++) {
             ItemStack s = inventory.getStack(i);
             if (s.isEmpty()) continue;
-            if (s.isIn(net.minecraft.item.ItemTags.AXES)) {
+            if (s.isIn(net.minecraft.registry.tag.ItemTags.AXES)) {
                 ItemStack old = this.getMainHandStack();
                 this.setStackInHand(Hand.MAIN_HAND, s.copy());
                 inventory.setStack(i, old.isEmpty() ? ItemStack.EMPTY : old.copy());
@@ -380,7 +380,7 @@ public class FrendEntity extends PathAwareEntity {
             if (food == null) continue;
             s.decrement(1);
             this.heal(Math.max(1.0f, food.nutrition()));
-            this.playSound(net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EAT.value(), 1.0f, 1.0f); // 【待编译验证】RegistryEntry 还是 SoundEvent,报错就去 .value()
+            this.playSound(net.minecraft.sound.SoundEvents.ENTITY_GENERIC_EAT, 1.0f, 1.0f); // 已验证:1.21.1 里是纯 SoundEvent,不带 .value()
             if (this.random.nextFloat() < 0.3f) sayDelayed("先垫两口,不耽误事。");
             return true;
         }

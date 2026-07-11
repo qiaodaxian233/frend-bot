@@ -217,3 +217,16 @@
 **已知欠账(先写完后修,主人钦点)**:箭是异步击杀——现有记忆埋点只认 tryAttack 白刃收尾,射死的怪暂不进战绩/救主统计。修法预案:记 pending 箭靶,目标死时对账;排后。
 
 **【待编译验证】新增**:`ProjectileUtil.createArrowProjectile` 四参签名(1.21 带武器参;报错退三参)、`PersistentProjectileEntity#setVelocity` 五参、`Entity#getBodyY`、`SoundEvents.ENTITY_ARROW_SHOOT`(可能要 .value())、`ItemStack#copyWithCount`。
+
+---
+
+## 编译清账 #1 — 首次真实 build,7 错全修(2026-07-11)
+
+主人首次本地 `./gradlew build`(Loom 1.7.4 / JDK 21),9 个版本攒的账开始清。7 个错 3 类,全在历年【待编译验证】清单内,无一意外:
+
+1. **ItemTags 包名**(5 处,FrendEntity):`net.minecraft.item.ItemTags` 不存在 → 正确包是 `net.minecraft.registry.tag.ItemTags`。任务类(Chop/Mine/Deposit/Autonomy)当初 import 就写对了所以没炸,只有 FrendEntity 里全限定名写错。教训:**全限定名要和已验证的 import 对齐,别凭记忆重写包路径**。
+2. **吃饭音效**(1 处):`SoundEvents.ENTITY_GENERIC_EAT` 在 1.21.1 是纯 `SoundEvent`,不带 `.value()` → 去掉。同时反向确认:v0.8 射箭的 `ENTITY_ARROW_SHOOT` 不带 .value() 的写法没报错 = 正确,该项销账。
+3. **protected 字段**(2 处,FrendCombatGoal):`Entity#random` 是 protected,Goal 类外部访问不到 → 改公开的 `frend.getRandom()`。
+
+**已销账**:ItemTags 包名(v0.1 起挂账)、GENERIC_EAT/ARROW_SHOOT 音效(v0.2/v0.8)、random 访问。
+**注意**:javac 一轮只报它解析到的错——这 7 个修完**必须再跑一次 build**,后面大概率还有下一批(渲染器 FrendRenderer 是全仓风险最高文件,一次都还没被编到报错,不代表它对)。
