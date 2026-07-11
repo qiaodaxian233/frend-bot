@@ -45,6 +45,9 @@ public final class FrendChatHandler {
     // v0.13:必须比 KEY_ORE 先匹配("挖矿道"含"挖矿","挖钻石"不含但归下矿)
     private static final String[] KEY_TUNNEL  = {"挖隧道", "打隧道", "挖矿道", "打矿道", "掘进", "tunnel"};
     private static final String[] KEY_DEEP    = {"挖深矿", "下矿", "挖钻石", "去挖钻", "deep mine"};
+    // v0.16 合成
+    private static final String[] KEY_CRAFT   = {"做工具", "造工具", "打工具", "合成工具", "craft"};
+    private static final String[] KEY_TORCHC  = {"做火把", "搓火把", "合成火把"};
     private static final String[] KEY_DEPOSIT = {"存箱子", "回家存", "存东西", "去存", "deposit"};
     private static final String[] KEY_WORKSTOP = {"收工", "别干了", "别挖了", "别砍了", "休息吧"};
 
@@ -172,6 +175,12 @@ public final class FrendChatHandler {
         } else if (matches(text, KEY_DEEP)) {
             frend.startTask(new com.frend.entity.task.TunnelTask(frend, com.frend.entity.task.TunnelTask.Kind.DEEP),
                     "下矿喽!挖楼梯下到矿层再直着掏,跟我后面别掉坑里。");
+        } else if (matches(text, KEY_CRAFT)) {
+            frend.startTask(new com.frend.entity.task.CraftTask(frend, com.frend.entity.task.CraftTask.Goal.TOOLS),
+                    "好,我鼓捣两件家伙——叮叮当当别嫌吵。");
+        } else if (matches(text, KEY_TORCHC)) {
+            frend.startTask(new com.frend.entity.task.CraftTask(frend, com.frend.entity.task.CraftTask.Goal.TORCHES),
+                    "搓火把喽,有煤就快。");
         } else if (matches(text, KEY_ORE)) {
             frend.startTask(new com.frend.entity.task.MineTask(frend, com.frend.entity.task.MineTask.Kind.ORE), "找煤铁去,有露头的都归咱。");
         } else if (matches(text, KEY_WORKSTOP) && frend.isWorking()) {

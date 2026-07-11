@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 13;
+    public static final int CURRENT_CONFIG_VERSION = 14;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -187,6 +187,12 @@ public class FrendConfig {
     // ===== v0.15 帮你捡尸 =====
     /** 你死了它去出事地点把掉落全收进遗物袋(独立于它自己背包),见面全数奉还。 */
     public boolean collectOwnerDrops = true;
+
+    // ===== v0.16 全智能自给自足 =====
+    /** 自己养活自己:缺工具自己合成(树→木镐→石头→石器),火把见底自己搓,啥都没有徒手撸树自举。 */
+    public boolean selfSufficient = true;
+    /** 天黑收敛:夜里(刷怪时段)不接新活,守着不出去浪;正在干的活不打断。 */
+    public boolean nightCaution = true;
 
     // ===== v0.14 挖矿进修(Baritone 思路) =====
     /** 追脉上限:一条矿脉最多连挖这么多块就收手,防止把直巷挖成蚁穴。 */

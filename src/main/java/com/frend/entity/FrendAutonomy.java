@@ -41,6 +41,8 @@ public class FrendAutonomy {
     private long lastDawnDay = -1;
     private long lastDuskDay = -1;
     private boolean wasRaining = false;
+    /** v0.16 "天黑不出去浪"每晚一次去重。 */
+    private long lastNightSaidDay = -1;
 
     // ===== 快速失败退避:自主开的工秒结束(附近没活干) → 下次冷却×3,防止每两分钟空转唠叨 =====
     private boolean selfStarted = false;
@@ -102,6 +104,16 @@ public class FrendAutonomy {
         selfStarted = true;           // 下面所有分支都算一次自主决策
         selfStartAge = frend.age;     // (纯喊话分支也置位无妨:isWorking=false 会立即触发退避,正好加长抱怨间隔)
 
+        // 0) v0.16 天黑收敛:夜里不接新活(正在干的不打断),守着别浪——像个懂事的人
+        if (c.nightCaution && isNight()) {
+            long day = frend.getWorld().getTimeOfDay() / 24000L;
+            if (lastNightSaidDay != day && ownerNearby(c)) {
+                lastNightSaidDay = day;
+                frend.sayDelayed("天黑了,怪多,我先不出去浪——有事天亮再干。");
+            }
+            return;
+        }
+
         // 1) 包快满 → 回家存(家得在这个维度,不然走不过去)
         if (inventoryFullness() >= c.autonomyDepositAtFullness
                 && frend.hasHome() && frend.isHomeInThisDimension()) {
@@ -110,9 +122,32 @@ public class FrendAutonomy {
             return;
         }
 
+        // 1.5) v0.16 自给自足:家伙不齐先自己造;火把见底自己搓——不再"没镐伸手要"
+        if (c.selfSufficient && com.frend.entity.task.CraftTask.shouldCraftTools(frend)) {
+            frend.startTask(new com.frend.entity.task.CraftTask(frend,
+                            com.frend.entity.task.CraftTask.Goal.TOOLS),
+                    "家伙不齐,我自己鼓捣两件——叮叮当当别嫌吵。");
+            return;
+        }
+        if (c.selfSufficient && c.autoTorch
+                && com.frend.entity.task.CraftTask.shouldCraftTorches(frend)) {
+            frend.startTask(new com.frend.entity.task.CraftTask(frend,
+                            com.frend.entity.task.CraftTask.Goal.TORCHES),
+                    "火把见底了,搓一把备着。");
+            return;
+        }
+
         // 2) 有斧头 → 砍树;3) 有镐子 → 凿石头;都没有且允许徒手 → 徒手砍树兜底
         boolean hasAxe  = !frend.findUsableTool(ItemTags.AXES).isEmpty();
         boolean hasPick = !frend.findUsableTool(ItemTags.PICKAXES).isEmpty();
+
+        // v0.16 白手起家自举:啥都没有、材料也没有 → 徒手撸树(树→木镐→石头→石器,链条自己转起来)
+        if (c.selfSufficient && !hasAxe && !hasPick
+                && !com.frend.entity.task.CraftTask.shouldCraftTools(frend)) {
+            frend.startTask(new com.frend.entity.task.ChopTreeTask(frend),
+                    "白手起家,先撸树!有树就有镐,有镐啥都有。");
+            return;
+        }
 
         if (hasAxe) {
             frend.startTask(new com.frend.entity.task.ChopTreeTask(frend),
@@ -175,5 +210,17 @@ public class FrendAutonomy {
             if (!inv.getStack(i).isEmpty()) used++;
         }
         return used / (double) inv.size();
+    }
+
+    /** v0.16 夜里(约 13000~23000 tick,刷怪时段)。 */
+    private boolean isNight() {
+        long tod = frend.getWorld().getTimeOfDay() % 24000L;
+        return tod >= 13000 && tod <= 23000;
+    }
+
+    /** 主人在聊天半径内(说话给人听,不对空气讲)。 */
+    private boolean ownerNearby(FrendConfig c) {
+        PlayerEntity owner = frend.getOwnerPlayer();
+        return owner != null && frend.squaredDistanceTo(owner) <= c.chatRadius * c.chatRadius;
     }
 }
