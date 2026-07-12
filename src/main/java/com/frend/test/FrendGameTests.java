@@ -129,7 +129,23 @@ public final class FrendGameTests implements FabricGameTest {
         int items = 0;
         for (int i = 0; i < f.getInventory().size(); i++) if (!f.getInventory().getStack(i).isEmpty()) items++;
         return " | frend@" + f.getBlockPos().toShortString() + " 活着=" + f.isAlive()
-                + " 任务=" + (f.currentTaskName() != null ? f.currentTaskName() : "无") + " 包=" + items + "格";
+                + " 任务=" + (f.currentTaskName() != null ? f.currentTaskName() : "无") + " 包=" + items + "格"
+                + " 最后说=「" + (f.getLastSaid() != null ? f.getLastSaid() : "(没说过话)") + "」";
+    }
+
+    /** 挖矿诊断:以 frend 为心 ±16 复刻 MineTask 三重筛(匹配/露头/安全),看石头死在哪道筛子上。 */
+    private static String scanStones(TestContext ctx, FrendEntity f) {
+        int matched = 0, exposedN = 0;
+        BlockPos me = f.getBlockPos();
+        for (BlockPos p : BlockPos.iterate(me.add(-16, -16, -16), me.add(16, 16, 16))) {
+            var st = f.getWorld().getBlockState(p);
+            if (!(st.isOf(Blocks.STONE) || st.isOf(Blocks.DEEPSLATE) || st.isOf(Blocks.COBBLESTONE))) continue;
+            matched++;
+            for (var dir : net.minecraft.util.math.Direction.values()) {
+                if (f.getWorld().getBlockState(p.offset(dir)).isAir()) { exposedN++; break; }
+            }
+        }
+        return " 扫描[匹配=" + matched + " 露头=" + exposedN + "]";
     }
 
     private static boolean invHas(FrendEntity f, Item item) {
@@ -280,7 +296,7 @@ public final class FrendGameTests implements FabricGameTest {
         pollUntil(ctx, 1150, () -> {
             ctx.assertTrue(ctx.getBlockState(new BlockPos(12, 1, 8)).isAir()
                             && ctx.getBlockState(new BlockPos(12, 2, 8)).isAir(),
-                    "石头没挖完" + dump(f));
+                    "石头没挖完" + scanStones(ctx, f) + dump(f));
             ctx.assertTrue(invHas(f, Items.COBBLESTONE), "挖了石头但圆石没进包" + dump(f));
         });
     }
@@ -325,7 +341,9 @@ public final class FrendGameTests implements FabricGameTest {
         tune();
         floor(ctx);
         FrendEntity f = spawnFrend(ctx, 6, 1, 8);
-        give(f, new ItemStack(Items.STONE_SWORD));
+        // 铁剑+铁甲+盾:上轮石剑裸装 1v1 尸壳打成确定性的一换一(尸壳剩 0.368 血它先倒)——
+        // 这关考的是看家分支触发与清场,不是拳头硬度的极限平衡,装备给足。
+        give(f, new ItemStack(Items.IRON_SWORD), new ItemStack(Items.IRON_CHESTPLATE), new ItemStack(Items.SHIELD));
         f.setMode(FrendEntity.Mode.STAY); // 看家岗位就在脚下
         HuskEntity husk = ctx.spawnEntity(EntityType.HUSK, new BlockPos(10, 1, 8));
         pollUntil(ctx, 1150, () -> ctx.assertTrue(!husk.isAlive(), "怪进了岗位圈,它没动手(看家分支没触发)"

@@ -941,8 +941,14 @@ public class FrendEntity extends PathAwareEntity {
     }
 
     /** 立即向聊天半径内玩家广播一句话,格式 &lt;frend&gt; xxx。 */
+    /** v0.27 黑匣子:最后说的一句(自动测试断言/报障快照用,一个字段大用处)。 */
+    private String lastSaid = null;
+
+    public String getLastSaid() { return lastSaid; }
+
     public void say(String msg) {
         if (this.getWorld().isClient) return;
+        this.lastSaid = msg;
         this.lastTalkMillis = System.currentTimeMillis(); // 对话延续窗口从这一刻起算
         rememberChat("assistant", msg);
         double r = FrendConfig.get().chatRadius;
@@ -957,6 +963,7 @@ public class FrendEntity extends PathAwareEntity {
 
     /** 带随机延迟说话(像人:不秒回)。 */
     public void sayDelayed(String msg) {
+        this.lastSaid = msg;
         FrendConfig c = FrendConfig.get();
         int span = Math.max(1, c.replyDelayMaxTicks - c.replyDelayMinTicks);
         int delay = c.replyDelayMinTicks + this.random.nextInt(span);
