@@ -28,9 +28,11 @@
 
 - frend = **本地运行的 Minecraft 陪伴机器人**:类玩家 NPC,像朋友一样陪玩家生存/聊天/干活/打怪,完全离线。蓝图见 `docs/DESIGN.md`,一句话产品定义:*不是外挂,不是刷材料机器,而是会记住你、陪你冒险的本地 AI 朋友*。
 - 核心架构原则(v0.4 起生效,现在就要守):**LLM 永不直接控制游戏**,只产出意图,执行走白名单技能 DSL。
-- 当前进度:**里程碑 24 / v0.23(开路寻路,Baritone 思路)已落地**;m1~m20 已本地编译全绿,m21~m24 待编译;实测已开张(首份报障已修)。
+- 当前进度:**里程碑 25 / v0.24(吃透 Baritone:搭桥+真挖速+LGPL)已落地**;m1~m20 已本地编译全绿,m21~m25 待编译;实测已开张。**项目许可:LGPL-3.0**(含 Baritone 改写代码,出处声明在 FrendPathfinder 头部)。
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
+
+m25(v0.24 吃透 Baritone,作者授权搬代码"可以吃透他"):授权变更在案(思路引用→授权改写),合规=项目转 LGPL-3.0(LICENSE 落仓库根,v1.0 待办顺势销账)+FrendPathfinder 头部出处声明升级;红线修订="不搭桥"解禁(先例同 v0.18 灵魂反转,人造方块白名单纹丝不动);BRIDGE=忠实改写 MovementTraverse backplace(落脚没地板贴脚下放块,跨沟跨水,水上能搭=变相解不游泳,岩浆不放,潜行速 8.0/格计价,5 向 canPlaceAgainst 扫描省去在案,**桥不拆**取舍在案);真挖速=忠实移植 ToolSet#calculateSpeedVsBlock 换 Yarn 映射(对上工具硬度×30/速度否则×100,附魔项略),BreakClock 注入口规划与执行同源一本账,开路真用工具真掉耐久(bestToolFor 学 getBestSlot);config 不动 v18。 · 上一里程碑
 
 m24(v0.23 开路寻路,作者两次点名参考 Baritone):真读了(沙箱浅克隆精读 ActionCosts/MovementHelper/Moves/MovementPillar/MovementAscend/AStarPathFinder),LGPL 思路引用零搬运,学到四条在 DEVLOG m24 与 FrendPathfinder 类文档双记账(tick 计价 4.633/COST_INF=1e6 防溢出/挖垫是路径的一步/bestSoFar 部分路径);FrendPathfinder=有界同步 A*(2400 节点+10ms 双熔断,半径箱 40,WALK/ASCEND/DESCEND 落1~3计摔价/PILLAR 材料预算随节点/DIG_DOWN 只挖一层),红线收敛=天然白名单外等于基岩+不游泳+危险寻路期剪枝;执行层 moveNearSmart=原版信 3 秒→A*→breakTick 挖(重校验世界变化)+pillarUpTick 垫+原版导航走,单步 6s 看门狗,弃路回落 stuck 照旧;接线 ChopTree/Mine(isCarving 不放弃),顺手修 MineTask 同款黑名单 bug(放弃不进名单又重选);Deposit/Farm 暂不接(回家路动土观感差实测后定);config 不动 v18。 · 上一里程碑
 

@@ -742,3 +742,31 @@ Moves / MovementPillar / MovementAscend / AStarPathFinder。**思路引用声明
 **【待编译验证】新增**:BlockState#getCollisionShape(BlockView,BlockPos)/VoxelShape#isEmpty、
 AbstractBlockState#getHardness(BlockView,BlockPos)、Direction.Type.HORIZONTAL 可迭代、
 BlockPos#asLong。config 无新字段。
+
+---
+
+## 里程碑 25 / v0.24 — 吃透 Baritone:搭桥 + 真挖速 + LGPL 落地(作者授权搬代码)
+
+**授权变更(记录在案)**:作者明示"搬代码也不是不行……主要是他还会搭方块好像。可以吃透他"。
+自此 Baritone 由"思路引用"升级为"授权改写";随之而来的合规动作:**本项目采用 LGPL-3.0**
+(LICENSE 已落仓库根,文本取自 Baritone 仓库同款;LICENSE 本来就在 v1.0 待办里,顺势销账),
+FrendPathfinder 文件头出处声明升级(含 Copyright Baritone contributors)。
+
+**红线修订(设计反转,先例同 v0.18 灵魂反转)**:v0.13 立的"不搭桥"经作者点名解禁——
+但只解禁"用废料搭",人造方块白名单红线纹丝不动。
+
+**搭桥(BRIDGE,忠实改写 MovementTraverse 的 bridge/backplace 分支)**:落脚点没地板且够不到
+1~3 格的落点 → 贴着脚下的块放一块走过去;跨沟跨水都靠它(**水面上能搭 = 变相解了"不游泳"**:
+不会游,但会修路过河);岩浆上不放;代价按潜行速 8.0/格计(比走贵,A* 自会能落就落、跨沟才搭)。
+Baritone 查 5 向 canPlaceAgainst 是玩家右键合法性需要;我们的节点按构造必有立足、背放永远
+可用,mob 直接放置,该扫描省去(简化记录在案)。**桥不拆**(柱子拆是因为柱子没用还丑;
+拆桥要么困死自己在对岸、要么把路还回沟里——路是给人走的,留着下次还能走,取舍在案)。
+
+**真挖速(忠实移植 ToolSet#calculateSpeedVsBlock,换 Yarn 映射)**:
+speed = stack.getMiningSpeedMultiplier(state);对上工具(或本不挑工具)耗时 = 硬度×30/速度,
+不对 = 硬度×100/速度——就是原版玩家的挖掘公式。附魔效率项略(frend 工具无附魔,注释在案)。
+寻路代价与执行耗时同源(BreakClock 注入口,FrendTask#carveTicksFor 实现):**规划里嫌贵的块,
+执行时真的挖得慢**——账是一本。开路挖掘真用工具真掉耐久(bestToolFor 学 getBestSlot 选法)。
+
+**【待编译验证】新增**:ItemStack#getMiningSpeedMultiplier / #isSuitableFor、
+BlockState#isToolRequired、AbstractBlockState#isReplaceable。config 无新字段。

@@ -111,7 +111,8 @@ public abstract class FrendTask {
 
         if (stuckTicks > 60 && carveCooldown == 0) { // 3 秒原版没戏 → 开路
             var path = com.frend.pathing.FrendPathfinder.find(
-                    frend.getWorld(), frend.getBlockPos(), pos, reach, scaffoldBudget(), 2400);
+                    frend.getWorld(), frend.getBlockPos(), pos, reach, scaffoldBudget(), 2400,
+                    this::carveTicksFor);
             if (path != null) {
                 carvePath = path;
                 carveIndex = 0;
@@ -155,15 +156,30 @@ public abstract class FrendTask {
         for (BlockPos b : step.toBreak()) {
             var state = frend.getWorld().getBlockState(b);
             if (state.isAir() || com.frend.pathing.FrendPathfinder.passable(frend.getWorld(), b)) continue;
-            if (com.frend.pathing.FrendPathfinder.breakCost(frend.getWorld(), b, state)
-                    >= com.frend.pathing.FrendPathfinder.COST_INF) {
+            if (!com.frend.pathing.FrendPathfinder.naturalBreakable(state)
+                    || com.frend.pathing.FrendPathfinder.dangerous(frend.getWorld(), b)) {
                 carvePath = null; // 情况变了(有人放了箱子/涌了岩浆),这条路作废
                 return;
             }
             frend.getNavigation().stop();
-            int ticks = Math.max(6, (int) (state.getHardness(frend.getWorld(), b) * 30));
-            breakTick(b, ticks);
+            int ticks = (int) Math.max(4, carveTicksFor(state, b));
+            if (breakTick(b, ticks)) {
+                var tool = bestToolFor(state); // 真用了工具就真掉耐久,账要诚实
+                if (!tool.isEmpty()) frend.damageTool(tool);
+            }
             return; // 一 tick 只磨一块
+        }
+
+        // 搭桥步(v0.24,忠实改写 MovementTraverse 的 backplace):落脚点没地板先放一块
+        if (step.type() == com.frend.pathing.FrendPathfinder.MoveType.BRIDGE) {
+            BlockPos floor = to.down();
+            var fs = frend.getWorld().getBlockState(floor);
+            if (!fs.isSolidBlock(frend.getWorld(), floor)) {
+                frend.getNavigation().stop();
+                if (!placeBridgeBlock(floor)) { carvePath = null; return; }
+                return; // 放完/节奏中,下 tick 再走
+            }
+            // 地板就位 → 落到下面正常走
         }
 
         if (step.type() == com.frend.pathing.FrendPathfinder.MoveType.DIG_DOWN) {
@@ -172,6 +188,59 @@ public abstract class FrendTask {
         // 走:相邻一格,原版导航足够可靠(上一格的跳跃它自己会)
         frend.getNavigation().startMovingTo(to.getX() + 0.5, to.getY(), to.getZ() + 0.5,
                 FrendConfig.get().followSpeed);
+    }
+
+    /**
+     * 挖穿耗时(tick)——忠实移植 Baritone ToolSet#calculateSpeedVsBlock(LGPL,作者授权,出处在案),
+     * 换成 Yarn 映射:speed=stack.getMiningSpeedMultiplier;对上工具(或本不挑工具)按 硬度×30/速度,
+     * 不对按 硬度×100/速度——这正是原版玩家的挖掘公式。附魔效率项略(frend 的工具没附魔)。
+     * 【待编译验证】ItemStack#getMiningSpeedMultiplier / #isSuitableFor / BlockState#isToolRequired
+     */
+    protected double carveTicksFor(net.minecraft.block.BlockState state, BlockPos pos) {
+        float hardness = state.getHardness(frend.getWorld(), pos);
+        if (hardness < 0) return com.frend.pathing.FrendPathfinder.COST_INF;
+        net.minecraft.item.ItemStack tool = bestToolFor(state);
+        float speed = tool.isEmpty() ? 1.0f : Math.max(1.0f, tool.getMiningSpeedMultiplier(state));
+        boolean proper = !state.isToolRequired() || (!tool.isEmpty() && tool.isSuitableFor(state));
+        return Math.max(4, hardness * (proper ? 30 : 100) / speed);
+    }
+
+    /** 包里对这方块挖得最快的工具(学 ToolSet#getBestSlot 的选法);没有返回 EMPTY 徒手。 */
+    private net.minecraft.item.ItemStack bestToolFor(net.minecraft.block.BlockState state) {
+        var inv = frend.getInventory();
+        net.minecraft.item.ItemStack best = net.minecraft.item.ItemStack.EMPTY;
+        float bestSpeed = 1.0f;
+        for (int i = 0; i < inv.size(); i++) {
+            net.minecraft.item.ItemStack st = inv.getStack(i);
+            if (st.isEmpty()) continue;
+            float sp = st.getMiningSpeedMultiplier(state);
+            if (sp > bestSpeed) { bestSpeed = sp; best = st; }
+        }
+        return best;
+    }
+
+    /**
+     * 搭桥放一块(消耗脚手架材料):桥<b>不拆</b>——柱子没用还丑所以拆,桥是路,
+     * 拆桥要么把自己困在对岸要么把路还回沟里,留着下次还能走(取舍记录于 DEVLOG)。
+     */
+    private boolean placeBridgeBlock(BlockPos floor) {
+        if (scaffoldCooldown > 0) { scaffoldCooldown--; return true; } // 节奏中
+        int slot = findScaffoldSlot();
+        if (slot < 0) return false;
+        var world = frend.getWorld();
+        var fs = world.getBlockState(floor);
+        if (!fs.isReplaceable() || fs.getFluidState().isIn(net.minecraft.registry.tag.FluidTags.LAVA)) {
+            return false; // 情况变了(岩浆涌过来了),不放
+        }
+        net.minecraft.item.ItemStack st = frend.getInventory().getStack(slot);
+        var block = net.minecraft.block.Block.getBlockFromItem(st.getItem());
+        st.decrement(1);
+        world.setBlockState(floor, block.getDefaultState());
+        world.playSound(null, floor, block.getDefaultState().getSoundGroup().getPlaceSound(),
+                net.minecraft.sound.SoundCategory.BLOCKS, 0.8f, 1.0f);
+        frend.swingHand(net.minecraft.util.Hand.MAIN_HAND, true);
+        scaffoldCooldown = 6;
+        return true;
     }
 
     /**
