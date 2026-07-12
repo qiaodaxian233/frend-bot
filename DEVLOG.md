@@ -838,3 +838,14 @@ FrendEntity 加 hasActiveTask() 测试访问器。
 TestContext#getAbsolutePos/setBlockState/getBlockState/spawnEntity/assertTrue/succeedWhen、
 FabricGameTest 接口路径、loom runs gametest 语法(inherit server)、结构 NBT 能否被 1.21.1 读取。
 报错优先怀疑这些名字。config 无新字段。
+
+### m27 补记:首跑两课(测试机一次跑通,9 关判错全是考卷问题不是考生问题)
+**课一:测试世界是平原不是虚空**。寻路两关四面漏风,它从考场外的真实草地绕出路——
+"搭桥关"找到了不搭桥的路,"红线关"合法绕行被误判违规。修:全基岩密室(sealedRoom,
+外壳+天花+四壁),搭桥关地板挖成水沟(落不下去、水里立不了足,只剩搭桥一条路——
+顺便把"水上搭桥"也纳入自动验证)。
+**课二:addFinalTask 是单发不是轮询**(实跑铁证:总时长 1.6s,9 关全挂在第 1 秒,
+任务根本没来得及干活)。映射能证名字证不了语义。修:不再依赖任何未实证的轮询方法,
+用已实证原语自建 pollUntil——runAtTick 每 10 tick 查一次吞异常,达标 complete(),
+到点最后一查不吞 = 正式判负。另:11 关并排同跑,看家关尸壳可能与隔壁考场 frend
+隔墙互殴 → batchId 单开批次隔离(批次间串行)。
