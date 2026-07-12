@@ -168,7 +168,7 @@ public final class FrendGameTests implements FabricGameTest {
         ctx.assertTrue(open != null, "塞子换成泥土还找不到路(挖掘寻路失灵)");
         boolean digs = open.stream().anyMatch(s -> !s.toBreak().isEmpty());
         ctx.assertTrue(digs, "找到路了但没计划挖任何块(不合常理)");
-        ctx.addFinalTask(() -> {});
+        ctx.addFinalTask(() -> {}); // 断言已在建考场时同步跑完,空任务首查即过
     }
 
     // ===================== 第 6 关:寻路搭桥(v0.24) =====================
@@ -191,7 +191,7 @@ public final class FrendGameTests implements FabricGameTest {
         ctx.assertTrue(path != null, "有 8 块料在手,3 格沟居然过不去");
         boolean bridges = path.stream().anyMatch(s -> s.type() == FrendPathfinder.MoveType.BRIDGE);
         ctx.assertTrue(bridges, "过沟的路里没有一步是搭桥(BRIDGE 未生效)");
-        ctx.addFinalTask(() -> {});
+        ctx.addFinalTask(() -> {}); // 断言已在建考场时同步跑完,空任务首查即过
     }
 
     // ===================== 第 7 关:挖石头 =====================
