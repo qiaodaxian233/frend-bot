@@ -105,6 +105,106 @@ public abstract class FrendTask {
         }
     }
 
+    // ===================== v0.22 脚手架:登高柱(实测首修,作者点名"不会给自己脚下搭方块") =====================
+    // 场景:悬空树/高处树根/坡顶目标,寻路永远到不了 → 像玩家一样脚下垫方块搭柱子上去。
+    // 规矩:只用包里的废料方块(土/圆石系);自己垫的自己拆,材料回包,不留柱子不改地形。
+    // 取舍(记入 DEVLOG):上升用"瞬移 1 格+原脚下放块"模拟原地跳放——服务端 mob 的真物理跳跃
+    // 不可控(JumpControl 只服务寻路),8 tick 一层的节奏+放块音效+挥手,观感接近玩家搭柱。
+
+    /** 登高柱:垫过的方块,栈顶 = 最上面那块(= 当前脚下)。 */
+    private final java.util.ArrayDeque<BlockPos> scaffold = new java.util.ArrayDeque<>();
+    private int scaffoldCooldown = 0;
+
+    /** 脚手架材料白名单:废料方块,不心疼。 */
+    private static boolean isScaffoldItem(net.minecraft.item.Item it) {
+        return it == net.minecraft.item.Items.DIRT
+                || it == net.minecraft.item.Items.COBBLESTONE
+                || it == net.minecraft.item.Items.COBBLED_DEEPSLATE
+                || it == net.minecraft.item.Items.NETHERRACK;
+    }
+
+    protected boolean hasScaffoldMaterial() {
+        return findScaffoldSlot() >= 0;
+    }
+
+    private int findScaffoldSlot() {
+        var inv = frend.getInventory();
+        for (int i = 0; i < inv.size(); i++) {
+            if (isScaffoldItem(inv.getStack(i).getItem())) return i;
+        }
+        return -1;
+    }
+
+    /** 已搭的柱子高度(格)。 */
+    protected int scaffoldHeight() { return scaffold.size(); }
+
+    /**
+     * 登高一层(约 8 tick 一层):头顶是树叶先敲开,然后脚下垫一块把自己抬 1 格。
+     * 返回 true = 这 tick 在登高/开路/冷却(调用方 return true 等着);
+     * 返回 false = 登不了(没材料 / 到上限 / 头顶是硬方块)。
+     */
+    protected boolean pillarUpTick(int maxHeight) {
+        if (scaffoldCooldown > 0) { scaffoldCooldown--; return true; }
+        if (scaffold.size() >= maxHeight) return false;
+        int slot = findScaffoldSlot();
+        if (slot < 0) return false;
+
+        var world = frend.getWorld();
+        BlockPos feet = frend.getBlockPos();
+        BlockPos head2 = feet.up(2); // 抬 1 格后脑袋要占的位置
+        var hs = world.getBlockState(head2);
+        if (!hs.isAir()) {
+            if (hs.isIn(net.minecraft.registry.tag.BlockTags.LEAVES)) {
+                breakTick(head2, 4); // 树叶挡头,顺手敲开(徒手树叶本来就快)
+                return true;
+            }
+            return false; // 顶上是硬方块,这条路登不上去
+        }
+
+        net.minecraft.item.ItemStack st = frend.getInventory().getStack(slot);
+        var block = net.minecraft.block.Block.getBlockFromItem(st.getItem());
+        st.decrement(1);
+        frend.refreshPositionAndAngles(frend.getX(), feet.getY() + 1.0, frend.getZ(),
+                frend.getYaw(), frend.getPitch());
+        world.setBlockState(feet, block.getDefaultState());
+        // 【待编译验证】BlockState#getSoundGroup / BlockSoundGroup#getPlaceSound
+        world.playSound(null, feet, block.getDefaultState().getSoundGroup().getPlaceSound(),
+                net.minecraft.sound.SoundCategory.BLOCKS, 0.8f, 1.0f);
+        frend.swingHand(net.minecraft.util.Hand.MAIN_HAND, true);
+        scaffold.push(feet.toImmutable());
+        scaffoldCooldown = 8;
+        return true;
+    }
+
+    /**
+     * 拆登高柱一层(约 6 tick 一层):拆自己脚下那块,材料直接回包(不掉落免得弹飞),
+     * 实体自然落 1 格。返回 true = 已拆完(没柱子也算拆完),false = 还在拆。
+     */
+    protected boolean tearDownScaffoldTick() {
+        if (scaffold.isEmpty()) return true;
+        if (scaffoldCooldown > 0) { scaffoldCooldown--; return false; }
+        reclaimScaffoldBlock(scaffold.pop());
+        scaffoldCooldown = 6;
+        return scaffold.isEmpty();
+    }
+
+    /** 立刻拆光柱子(任务被打断时来不及演逐层动画的兜底,onStop 用)。 */
+    protected void discardScaffoldNow() {
+        while (!scaffold.isEmpty()) reclaimScaffoldBlock(scaffold.pop());
+    }
+
+    /** 拆一块柱子:还是我们的材料就回包;已被别人拆走/换过就不凭空造物资。 */
+    private void reclaimScaffoldBlock(BlockPos pos) {
+        var world = frend.getWorld();
+        var state = world.getBlockState(pos);
+        if (state.isAir() || !isScaffoldItem(state.getBlock().asItem())) return;
+        world.breakBlock(pos, false, frend); // 不掉落,直接回包
+        world.setBlockBreakingInfo(frend.getId(), pos, -1);
+        net.minecraft.item.ItemStack back = new net.minecraft.item.ItemStack(state.getBlock().asItem());
+        net.minecraft.item.ItemStack rest = frend.getInventory().addStack(back);
+        if (!rest.isEmpty()) frend.dropStack(rest);
+    }
+
     /**
      * v0.6 挖掘避险,v0.13 提炼到基类共用(MineTask/TunnelTask):
      * 安全返回 null,不敢挖返回原因(给嘴上解释用)。

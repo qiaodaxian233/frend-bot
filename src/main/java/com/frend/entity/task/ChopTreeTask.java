@@ -19,6 +19,11 @@ import java.util.Set;
  * <p>决策(记入 DEVLOG):够得着树根就把整棵连通原木处理完,不真的爬树——
  * 高处枝干"隔空"砍,换来的是不卡寻路、不留半棵悬空树,v0.2 的取舍。
  * 斧头可选:有斧头快一倍并消耗耐久,耐久见底自动弃用;没斧头徒手慢慢锤。
+ *
+ * <p>v0.22 实测首修(作者实测:悬空树反复"换一棵"刷屏死循环):
+ * ① 放弃的树<b>整棵</b>进黑名单,findNearestLog 不再重选(之前"换一棵"是假的,换来换去同一棵);
+ * ② 站到树正下方但目标在头顶够不着 → <b>搭登高柱</b>(垫包里的土/圆石,砍完拆干净材料回包);
+ * ③ 垫不了(没材料/到顶)才真放弃;连弃 3 棵说明这片地形不行,收工如实汇报,不无限磨。
  */
 public class ChopTreeTask extends FrendTask {
 
@@ -27,6 +32,11 @@ public class ChopTreeTask extends FrendTask {
     private final List<BlockPos> tree = new ArrayList<>(); // 当前这棵树的原木,底部优先
     private int chopped = 0;
     private boolean saidNoAxe = false;
+    /** v0.22 放弃过的原木(整棵进名单),findNearestLog 跳过——"换一棵"要真的换。 */
+    private final Set<BlockPos> unreachable = new HashSet<>();
+    private int givenUp = 0;
+    private boolean saidNoScaffold = false;
+    private static final int SCAFFOLD_MAX = 8; // 登高柱上限(格),再高的树不伺候
 
     public ChopTreeTask(FrendEntity frend) {
         super(frend);
@@ -40,12 +50,18 @@ public class ChopTreeTask extends FrendTask {
         FrendConfig cfg = FrendConfig.get();
 
         if (chopped >= cfg.maxBlocksPerJob) {
+            if (!tearDownScaffoldTick()) return true; // 收工前把柱子拆干净
             frend.say("砍了 " + chopped + " 块原木,先收工!都在我包里。");
             clearBreaking();
             return false;
         }
 
         if (tree.isEmpty()) {
+            if (!tearDownScaffoldTick()) return true; // 换树之间先落地,柱子拆干净材料回包
+            if (givenUp >= 3) { // 连弃 3 棵:这片地形不行,收工(话在 giveUpTree 已说)
+                clearBreaking();
+                return false;
+            }
             BlockPos base = findNearestLog(cfg);
             if (base == null) {
                 frend.say(chopped == 0 ? "附近没找着树……带我去有树的地方再喊我砍。"
@@ -57,13 +73,27 @@ public class ChopTreeTask extends FrendTask {
         }
 
         BlockPos target = tree.get(0);
-        // 站到这棵树最低一块的旁边即可(高处枝干隔空处理,见类注释)
-        BlockPos stand = tree.get(0);
-        if (!moveNear(stand, cfg.workReach)) {
-            if (stuckTicks() > 20 * 8) { // 8 秒走不到 → 这棵放弃
-                frend.say("这棵树我过不去,换一棵。");
-                tree.clear();
-                resetStuck();
+        if (!moveNear(target, cfg.workReach)) {
+            // 已在树正下方、目标在头顶(悬空树/高枝) → 搭登高柱,而不是干瞪眼
+            double dx = target.getX() + 0.5 - frend.getX();
+            double dz = target.getZ() + 0.5 - frend.getZ();
+            if (dx * dx + dz * dz <= 2.5 * 2.5 && target.getY() > frend.getBlockPos().getY()) {
+                frend.getNavigation().stop(); // 登高时别让寻路拽着乱走,人得站稳
+                if (pillarUpTick(SCAFFOLD_MAX)) {
+                    resetStuck();
+                    return true; // 在登高/敲树叶/冷却,下 tick 继续
+                }
+                // 登不了:没材料 / 到上限 / 头顶硬方块 → 这棵真放弃
+                if (!hasScaffoldMaterial() && !saidNoScaffold) {
+                    saidNoScaffold = true;
+                    frend.say("上面那截够不着,包里又没土没圆石垫脚……有废料给我点,这种树我就能上。");
+                }
+                giveUpTree();
+                return true;
+            }
+            if (stuckTicks() > 20 * 8) { // 8 秒走不到 → 这棵放弃(整棵进黑名单)
+                frend.say("这棵树我过不去,先换一棵。");
+                giveUpTree();
             }
             return true;
         }
@@ -91,6 +121,7 @@ public class ChopTreeTask extends FrendTask {
         BlockPos best = null;
         double bestD = Double.MAX_VALUE;
         for (BlockPos p : BlockPos.iterate(me.add(-r, -r, -r), me.add(r, r, r))) {
+            if (unreachable.contains(p)) continue; // v0.22 放弃过的不再重选
             if (!frend.getWorld().getBlockState(p).isIn(BlockTags.LOGS)) continue;
             double d = p.getSquaredDistance(me);
             if (d < bestD) {
@@ -130,8 +161,21 @@ public class ChopTreeTask extends FrendTask {
         });
     }
 
+    /** 放弃当前这棵:整棵剩余原木进黑名单(不然下轮又选中同棵的另一块);连弃 3 棵收工。 */
+    private void giveUpTree() {
+        unreachable.addAll(tree); // tree 里就是这棵剩下的全部原木
+        tree.clear();
+        resetStuck();
+        givenUp++;
+        if (givenUp >= 3) {
+            frend.say(chopped == 0 ? "这片的树尽是够不着的,我先歇了……换个好走的林子再喊我?"
+                    : "够得着的都砍了(" + chopped + " 块),剩下几棵实在上不去,先收工。");
+        }
+    }
+
     @Override
     public void onStop() {
         clearBreaking();
+        discardScaffoldNow(); // 被打断也不留柱子
     }
 }

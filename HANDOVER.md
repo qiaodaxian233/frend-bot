@@ -28,9 +28,11 @@
 
 - frend = **本地运行的 Minecraft 陪伴机器人**:类玩家 NPC,像朋友一样陪玩家生存/聊天/干活/打怪,完全离线。蓝图见 `docs/DESIGN.md`,一句话产品定义:*不是外挂,不是刷材料机器,而是会记住你、陪你冒险的本地 AI 朋友*。
 - 核心架构原则(v0.4 起生效,现在就要守):**LLM 永不直接控制游戏**,只产出意图,执行走白名单技能 DSL。
-- 当前进度:**里程碑 22 / v0.21(全测试面板)已落地**;m1~m20 已本地编译全绿,m21/m22 待编译,**游戏内实测为零**——面板就是为开测造的:游戏里 `/frend test`(自检先跑 `/frend test check`)。
+- 当前进度:**里程碑 23 / v0.22(实测首修:登高柱)已落地**;m1~m20 已本地编译全绿,m21~m23 待编译;**实测已开张**(作者游戏内首测,第一份报障已修:砍树死循环+登高柱)。
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
+
+m23(v0.22 实测首修 🎉第一份真实报障:作者实测悬空树"换一棵"无限刷屏+点名"不会给自己脚下搭方块"):病灶一="换一棵"是假的(无黑名单,findNearestLog 重选同棵)→ giveUpTree 整棵剩余原木进 unreachable(只记入口不够,BFS 会从同棵另一块再进)+连弃 3 棵收工如实汇报;病灶二=悬空树 moveNear 三维距离永远走不到 → FrendTask 基类新增脚手架公共机关(pillarUpTick=头顶树叶先敲/瞬移1格+放块 8tick 一层/材料白名单土圆石系/上限8;tearDownScaffoldTick=6tick 一层材料回包不掉落逐格落无摔伤;discardScaffoldNow=打断瞬拆兜底;回收校验不凭空造物资),ChopTreeTask 接入(水平≤2.5 且目标在头顶→停导航防寻路拽下柱→登高;没材料一次性提示);取舍=瞬移模拟跳放(服务端 mob 真跳不可控)+水中垫块拆后水不复原小账+"不搭桥"红线不变(登高是垂直自救);config 不动 v18。 · 上一里程碑
 
 m22(v0.21 全测试面板,作者点单,"先测再堆"落成工具):FrendTestPanel=聊天栏可点击测试台 `/frend test`(权限 2,发东西刷怪调时间是测试工具不是玩法),七关 37 步剧本内建(悬浮出预期),[布置]一键摆考场(发道具/塞 frend 包/刷怪带方位/入夜 13000/压血量),[✔][✘]记结果落盘 config/frend/testpanel.json 跨重启,[报告]✘单列即报障格式,[重置]二次确认;自检 `/frend test check`=注册/配置一览/LLM sanity/**灵魂档读写往返探针**(NbtIo 签名问题当场暴露)/frend 状态;**两个时间调试钩**=skipdays N(FrendSoul.debugQueueReunion 压待问候表测分级重逢)+days N(FrendMemory.debugAddDays 拨 bonusDays 测纪念日),第五关[布置]自动调;顺手销 v0.19 挂账两笔=FrendKnowledge fishCaught/cropsHarvested 四件套(接 FishTask 咬钩+FarmTask 收割);取舍=聊天面板不做 GUI Screen(API 面只 Text/ClickEvent/HoverEvent 三件少赌);config 不动 v18。 · 上一里程碑
 
