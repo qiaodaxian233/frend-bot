@@ -9,11 +9,12 @@
     "homepage": "https://github.com/qiaodaxian233/frend-bot",
     "sources": "https://github.com/qiaodaxian233/frend-bot"
   },
-  "license": "ARR",
+  "license": "LGPL-3.0-only",
   "environment": "*",
   "entrypoints": {
     "main": ["com.frend.Frend"],
-    "client": ["com.frend.client.FrendClient"]
+    "client": ["com.frend.client.FrendClient"],
+    "fabric-gametest": ["com.frend.test.FrendGameTests"]
   },
   "mixins": [
     "frend.mixins.json"

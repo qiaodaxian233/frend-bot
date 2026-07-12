@@ -299,6 +299,9 @@ public class FrendEntity extends PathAwareEntity {
     // ===================== 任务(v0.2 干活) =====================
 
     /** 开始一个任务(自动切 WORK 模式,顶掉旧任务)。 */
+    /** v0.26 测试用:当前有没有在跑任务(GameTest 断言"够不着要认账收工"靠它)。 */
+    public boolean hasActiveTask() { return currentTask != null; }
+
     public void startTask(com.frend.entity.task.FrendTask task, String announce) {
         if (currentTask != null) currentTask.onStop();
         currentTask = task;

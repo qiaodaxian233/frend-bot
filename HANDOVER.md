@@ -28,9 +28,11 @@
 
 - frend = **本地运行的 Minecraft 陪伴机器人**:类玩家 NPC,像朋友一样陪玩家生存/聊天/干活/打怪,完全离线。蓝图见 `docs/DESIGN.md`,一句话产品定义:*不是外挂,不是刷材料机器,而是会记住你、陪你冒险的本地 AI 朋友*。
 - 核心架构原则(v0.4 起生效,现在就要守):**LLM 永不直接控制游戏**,只产出意图,执行走白名单技能 DSL。
-- 当前进度:**里程碑 26 / v0.25 已落地,m1~m26 全部编译全绿**(m26 亦作者本地 BUILD SUCCESSFUL,MoveControl#moveTo 实证摘牌)。项目许可:LGPL-3.0。Baritone 消化完毕。**当前主线:游戏内实测**(TESTPLAN 七关,游戏里 /frend test),测出的报障优先于一切新功能。
+- 当前进度:**里程碑 27 / v0.26(全自动测试)已落地**;m1~m26 编译全绿,m27 待编译(GameTest API 新面,高危)。项目许可:LGPL-3.0。**当前主线:`./gradlew runGametest` 跑通 11 关自动测试**;通不过的关就是最新报障,优先于一切新功能。
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
+
+m27(v0.26 全自动测试,作者点单"不需要我手动测试"):GameTest 框架+fabric-gametest-api-v1(随 fabric-api 零新依赖),`./gradlew runGametest` 一条命令=无头测试服→搭考场→召 frend→下任务→验结果→JUnit 报告(build/gametest-report.xml)→失败非零退出可挂 CI;考场=16×8×16 空结构(python 手搓 gzip NBT 111 字节,structure/structures 双份投放防目录口径),地板磨制安山岩(不可挖不可拆);tune()=自主关+干活加速+战斗看家开;11 关含两道回归考(悬空树登高/够不着认账收工)+红线双向验(木板必须无路/泥土必须有路)+看家用尸壳防白天自燃送战果;测不了的诚实清单=钓鱼(随机等待)/催泪感(验不了眼眶)/LLM(外部服务);顺手=mod.json license ARR→LGPL-3.0-only 补正+hasActiveTask 访问器;GameTest API 整面属高危待编译验证;config 不动 v18。 · 上一里程碑
 
 m26(v0.25 把能吃的都吃了,作者指示能吃的都吃不必吃的不吃;🎉m21~m25 一次 BUILD SUCCESSFUL 全绿销账):吃三口=MovementDiagonal 斜走(两肩双通防切角,WALK×√2,不挖不垫)+"异步"本质(World 非线程安全,Baritone 靠世界快照才敢开线程;改 Session 可续算,A* 状态驻留每 tick 300 节点+3ms 双预算,预算 2400→6000,长途不卡刻,取舍在案)+MovementFall 精神(4~6 格带伤下落疼痛计价每格 12tick,血>7 心才肯跳,硬上限 8,执行层大落差 MoveControl 直线出边缘);不吃单理由在案=CachedWorld(陪伴实体不出加载区)/水面落点(不游泳落水=困)/Parkour(mob 速度控制不精,有桥不缺这口)/MineProcess 对照(exposed 判定同思想,Y 层已在 deep,记账完事)/Input 模拟(玩家器官,真实体用不上);config 不动 v18。 · 上一里程碑
 
