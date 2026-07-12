@@ -124,6 +124,14 @@ public final class FrendGameTests implements FabricGameTest {
         }
     }
 
+    /** 现场快照:终判失败时拼进消息,下一份报告直接看穿死因。 */
+    private static String dump(FrendEntity f) {
+        int items = 0;
+        for (int i = 0; i < f.getInventory().size(); i++) if (!f.getInventory().getStack(i).isEmpty()) items++;
+        return " | frend@" + f.getBlockPos().toShortString() + " 活着=" + f.isAlive()
+                + " 任务=" + (f.currentTaskName() != null ? f.currentTaskName() : "无") + " 包=" + items + "格";
+    }
+
     private static boolean invHas(FrendEntity f, Item item) {
         for (int i = 0; i < f.getInventory().size(); i++) {
             if (f.getInventory().getStack(i).isOf(item)) return true;
@@ -143,7 +151,7 @@ public final class FrendGameTests implements FabricGameTest {
 
     // ===================== 第 2 关:砍树(整棵收) =====================
 
-    @GameTest(templateName = ARENA, tickLimit = 1200)
+    @GameTest(templateName = ARENA, tickLimit = 1200, batchId = "frendChop")
     public void chopTreeCollectsLogs(TestContext ctx) {
         tune();
         floor(ctx);
@@ -153,15 +161,16 @@ public final class FrendGameTests implements FabricGameTest {
         f.startTask(new com.frend.entity.task.ChopTreeTask(f), null);
         pollUntil(ctx, 1150, () -> {
             for (int y = 1; y <= 3; y++) {
-                ctx.assertTrue(ctx.getBlockState(new BlockPos(12, y, 8)).isAir(), "第 " + y + " 层原木还立着");
+                final int fy = y;
+                ctx.assertTrue(ctx.getBlockState(new BlockPos(12, fy, 8)).isAir(), "第 " + fy + " 层原木还立着" + dump(f));
             }
-            ctx.assertTrue(invHas(f, Items.OAK_LOG), "树砍了但木头没进它包");
+            ctx.assertTrue(invHas(f, Items.OAK_LOG), "树砍了但木头没进它包" + dump(f));
         });
     }
 
     // ===================== 第 3 关:悬空树 → 登高柱(实测首修的回归考) =====================
 
-    @GameTest(templateName = ARENA, tickLimit = 1800)
+    @GameTest(templateName = ARENA, tickLimit = 1800, batchId = "frendHover")
     public void hoverLogScaffoldsUp(TestContext ctx) {
         tune();
         floor(ctx);
@@ -170,14 +179,14 @@ public final class FrendGameTests implements FabricGameTest {
         give(f, new ItemStack(Items.DIRT, 8));
         f.startTask(new com.frend.entity.task.ChopTreeTask(f), null);
         pollUntil(ctx, 1750, () -> {
-            ctx.assertTrue(ctx.getBlockState(new BlockPos(8, 5, 8)).isAir(), "悬空原木没砍下来(登高柱没起作用)");
+            ctx.assertTrue(ctx.getBlockState(new BlockPos(8, 5, 8)).isAir(), "悬空原木没砍下来(登高柱没起作用)" + dump(f));
             ctx.assertTrue(invHas(f, Items.OAK_LOG), "砍了但没进包");
         });
     }
 
     // ===================== 第 4 关:够不着要认账收工,不许无限"换一棵"(首份报障的回归考) =====================
 
-    @GameTest(templateName = ARENA, tickLimit = 400)
+    @GameTest(templateName = ARENA, tickLimit = 400, batchId = "frendUnreach")
     public void unreachableGivesUpFast(TestContext ctx) {
         tune();
         floor(ctx);
@@ -185,7 +194,7 @@ public final class FrendGameTests implements FabricGameTest {
         FrendEntity f = spawnFrend(ctx, 8, 1, 8); // 不给垫脚材料 → 只能放弃
         f.startTask(new com.frend.entity.task.ChopTreeTask(f), null);
         pollUntil(ctx, 380, () -> {
-            ctx.assertTrue(!f.hasActiveTask(), "够不着还赖着不收工(死循环回归)");
+            ctx.assertTrue(!f.hasActiveTask(), "够不着还赖着不收工(死循环回归)" + dump(f));
             ctx.assertTrue(!ctx.getBlockState(new BlockPos(8, 7, 8)).isAir(), "没材料居然砍到了?判定漏了");
         });
     }
@@ -207,7 +216,24 @@ public final class FrendGameTests implements FabricGameTest {
         BlockPos goal = ctx.getAbsolutePos(new BlockPos(13, 1, 8));
         List<FrendPathfinder.Step> blocked = FrendPathfinder.find(
                 ctx.getWorld(), start, goal, 1.2, 0, 4000, null);
-        ctx.assertTrue(blocked == null, "唯一通路是木板,居然规划出路了——人造方块红线被穿透!");
+        // 注意:find() 按设计会返回"部分路径"(bestSoFar,走近点也比干瞪眼强)——非空不等于违规。
+        // 红线的真正断言是:①一步都不许计划挖木板;②带着木板塞子永远到不了终点。
+        BlockPos plugLow = ctx.getAbsolutePos(new BlockPos(9, 1, 8));
+        BlockPos plugHigh = ctx.getAbsolutePos(new BlockPos(9, 2, 8));
+        if (blocked != null) {
+            for (FrendPathfinder.Step st : blocked) {
+                for (BlockPos b : st.toBreak()) {
+                    ctx.assertTrue(!b.equals(plugLow) && !b.equals(plugHigh),
+                            "规划里要挖木板——人造方块红线被穿透!");
+                }
+            }
+            BlockPos last = blocked.get(blocked.size() - 1).to();
+            double dx = goal.getX() + 0.5 - (last.getX() + 0.5);
+            double dy = goal.getY() + 0.5 - (last.getY() + 1.0);
+            double dz = goal.getZ() + 0.5 - (last.getZ() + 0.5);
+            ctx.assertTrue(dx * dx + dy * dy + dz * dz > 1.2 * 1.2,
+                    "带着木板塞子居然走到了终点(密室必有泄漏)");
+        }
 
         // 对照组:塞子换成泥土(天然) → 必须能规划出路,且路里真的要挖那两块
         ctx.setBlockState(new BlockPos(9, 1, 8), Blocks.DIRT.getDefaultState());
@@ -242,7 +268,7 @@ public final class FrendGameTests implements FabricGameTest {
 
     // ===================== 第 7 关:挖石头 =====================
 
-    @GameTest(templateName = ARENA, tickLimit = 1200)
+    @GameTest(templateName = ARENA, tickLimit = 1200, batchId = "frendMine")
     public void mineTaskMinesStone(TestContext ctx) {
         tune();
         floor(ctx);
@@ -254,14 +280,14 @@ public final class FrendGameTests implements FabricGameTest {
         pollUntil(ctx, 1150, () -> {
             ctx.assertTrue(ctx.getBlockState(new BlockPos(12, 1, 8)).isAir()
                             && ctx.getBlockState(new BlockPos(12, 2, 8)).isAir(),
-                    "石头没挖完");
-            ctx.assertTrue(invHas(f, Items.COBBLESTONE), "挖了石头但圆石没进包");
+                    "石头没挖完" + dump(f));
+            ctx.assertTrue(invHas(f, Items.COBBLESTONE), "挖了石头但圆石没进包" + dump(f));
         });
     }
 
     // ===================== 第 8 关:种田(只收熟的 + 当场补种) =====================
 
-    @GameTest(templateName = ARENA, tickLimit = 900)
+    @GameTest(templateName = ARENA, tickLimit = 900, batchId = "frendFarm")
     public void farmHarvestsAndReplants(TestContext ctx) {
         tune();
         floor(ctx);
@@ -280,7 +306,7 @@ public final class FrendGameTests implements FabricGameTest {
 
     // ===================== 第 9 关:开炉烧铁(真熔炉全链路) =====================
 
-    @GameTest(templateName = ARENA, tickLimit = 2000)
+    @GameTest(templateName = ARENA, tickLimit = 2000, batchId = "frendSmelt")
     public void smeltProducesIronIngot(TestContext ctx) {
         tune();
         floor(ctx);
@@ -289,7 +315,7 @@ public final class FrendGameTests implements FabricGameTest {
         give(f, new ItemStack(Items.RAW_IRON, 3), new ItemStack(Items.COAL, 2));
         f.startTask(new com.frend.entity.task.SmeltTask(f), null);
         pollUntil(ctx, 1950, () -> ctx.assertTrue(invHas(f, Items.IRON_INGOT),
-                "三块生铁进炉,一块铁锭没出来(装料/火候/收炉哪步断了)"));
+                "三块生铁进炉,一块铁锭没出来(装料/火候/收炉哪步断了)" + dump(f)));
     }
 
     // ===================== 第 10 关:看家杀怪(用尸壳,白天不自燃不作弊) =====================
@@ -302,7 +328,8 @@ public final class FrendGameTests implements FabricGameTest {
         give(f, new ItemStack(Items.STONE_SWORD));
         f.setMode(FrendEntity.Mode.STAY); // 看家岗位就在脚下
         HuskEntity husk = ctx.spawnEntity(EntityType.HUSK, new BlockPos(10, 1, 8));
-        pollUntil(ctx, 1150, () -> ctx.assertTrue(!husk.isAlive(), "怪进了岗位圈,它没动手(看家分支没触发)"));
+        pollUntil(ctx, 1150, () -> ctx.assertTrue(!husk.isAlive(), "怪进了岗位圈,它没动手(看家分支没触发)"
+                + " 尸壳血=" + husk.getHealth() + "@" + husk.getBlockPos().toShortString() + dump(f)));
     }
 
     // ===================== 附加关:记忆 NBT 往返(纯逻辑,不用地形) =====================
