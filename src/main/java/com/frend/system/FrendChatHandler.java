@@ -122,15 +122,27 @@ public final class FrendChatHandler {
 
         boolean llmBackend = "openai".equalsIgnoreCase(FrendConfig.get().chatBackend);
 
+        // v0.27 多 frend:指令全体执行(一群朋友一起应"砍树"很自然),但起名只落最近那只、
+        // 闲聊只有最近的接话——不然三只齐声合唱能吵死人。
+        FrendEntity nearest = frends.get(0);
+        for (FrendEntity f : frends) {
+            if (sender.squaredDistanceTo(f) < sender.squaredDistanceTo(nearest)) nearest = f;
+        }
+
         for (FrendEntity frend : frends) {
             // 1) 指令永远走规则(红线:模型不控游戏)
-            if (handleCommand(frend, sender, text, raw)) continue;
+            if (handleCommand(frend, sender, text, raw, frend == nearest)) continue;
 
             // v0.18 学话:没被当成请求的短句才学(纯本地词频,3 次成诵;学会那刻得意一下)
             if (FrendConfig.get().phraseLearning) {
                 String learnedNow = frend.getMemory().observePhrase(raw.trim());
-                if (learnedNow != null) frend.sayDelayed("「" + learnedNow + "」——嘿嘿,这话我跟你学的。");
+                // v0.27 每只都学(各自的记忆),但"跟你学的"这句得意只有最近的喊——不合唱
+                if (learnedNow != null && frend == nearest) {
+                    frend.sayDelayed("「" + learnedNow + "」——嘿嘿,这话我跟你学的。");
+                }
             }
+
+            if (frend != nearest) continue; // v0.27 不合唱:闲聊/兜底只有最近的接
 
             // 2) 闲聊:关键词模板 / LLM
             String smallTalk = smallTalkOrNull(text);
@@ -156,7 +168,8 @@ public final class FrendChatHandler {
     }
 
     /** 指令关键词。命中返回 true(已处理)。 */
-    private static boolean handleCommand(FrendEntity frend, ServerPlayerEntity sender, String text, String raw) {
+    private static boolean handleCommand(FrendEntity frend, ServerPlayerEntity sender, String text, String raw,
+                                         boolean nearest) {
         // v0.10 起名/记事必须最先判:名字和笔记内容里可能夹带工作关键词
         // ("给你起名砍树侠"/"记住:明天去挖矿"),放后面会被干活关键词截胡。内容从 raw 取,保留大小写。
         if (matches(text, KEY_NOTES_RECALL)) { // 问"记住什么"要抢在裸"记住"解析之前
@@ -165,8 +178,8 @@ public final class FrendChatHandler {
         }
         String newName = extractAfter(raw, KEY_RENAME);
         if (newName != null) {
-            frend.renameBy(stripTail(newName));
-            return true;
+            if (nearest) frend.renameBy(stripTail(newName)); // v0.27 起名只落最近那只
+            return true; // 非最近的也吞掉这句:不该被学话/闲聊接走
         }
         String note = extractAfter(raw, KEY_NOTE);
         if (note != null) {

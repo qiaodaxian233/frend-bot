@@ -28,9 +28,11 @@
 
 - frend = **本地运行的 Minecraft 陪伴机器人**:类玩家 NPC,像朋友一样陪玩家生存/聊天/干活/打怪,完全离线。蓝图见 `docs/DESIGN.md`,一句话产品定义:*不是外挂,不是刷材料机器,而是会记住你、陪你冒险的本地 AI 朋友*。
 - 核心架构原则(v0.4 起生效,现在就要守):**LLM 永不直接控制游戏**,只产出意图,执行走白名单技能 DSL。
-- 当前进度:**m27 收官 🎉 自动测试 11/11 全绿(作者实跑 All 11 required tests passed)**;首战抓获并修复三只真虫(手持镐不识/收工丢拾取/无主撤退站桩)。m1~m27 编译全绿。项目许可:LGPL-3.0。**日常回归防线:`./gradlew runGametest`(30 秒),任何改动先过这关再谈别的。**
+- 当前进度:**里程碑 28 / v0.27(多 frend 协作:分魂/认领分工/点名/不合唱)已落地,待编译+跑 12 关**。m1~m27 编译全绿,自动测试 11/11 基线在案。项目许可:LGPL-3.0。日常回归:`./gradlew runGametest`。
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
+
+m28(v0.27 多 frend 协作,v0.18 挂账"分魂留待协作里程碑"兑现):分魂=灵魂档 v2 格式 Frends 子树每只一槽名字记忆见识互不串档+旧档读时视为 1 号魂迁移+soulId 随实体落盘+召唤分槽老朋友空槽优先召回;分工=FrendCrew 认领制(选中即认领/同伴跳过/FrendEntity 统一清账/60s 过期兜底/键带维度/不落盘自愈),砍树认领整棵弃树释放、挖矿种田认领单块;点名=name 命令与聊天改名只落最近那只(非最近吞句);不合唱=闲聊 LLM 兜底只最近接话、学话人人学但得意只最近喊、干活指令仍全体执行;风味=开工同种活 50% 搭话 crewChatter 可关;config v19(maxFrendsPerPlayer 1→3+crewChatter);自动测试第 12 关 crewChopsSeparateTrees(两树两只断言各有木头验分工)。 · 上一里程碑
 
 m27(v0.26 全自动测试,作者点单"不需要我手动测试"):GameTest 框架+fabric-gametest-api-v1(随 fabric-api 零新依赖),`./gradlew runGametest` 一条命令=无头测试服→搭考场→召 frend→下任务→验结果→JUnit 报告(build/gametest-report.xml)→失败非零退出可挂 CI;考场=16×8×16 空结构(python 手搓 gzip NBT 111 字节,structure/structures 双份投放防目录口径),地板磨制安山岩(不可挖不可拆);tune()=自主关+干活加速+战斗看家开;11 关含两道回归考(悬空树登高/够不着认账收工)+红线双向验(木板必须无路/泥土必须有路)+看家用尸壳防白天自燃送战果;测不了的诚实清单=钓鱼(随机等待)/催泪感(验不了眼眶)/LLM(外部服务);顺手=mod.json license ARR→LGPL-3.0-only 补正+hasActiveTask 访问器;GameTest API 整面属高危待编译验证;config 不动 v18。 · 上一里程碑
 

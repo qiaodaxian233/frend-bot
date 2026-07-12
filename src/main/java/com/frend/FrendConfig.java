@@ -17,12 +17,14 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 18;
+    public static final int CURRENT_CONFIG_VERSION = 19;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
     /** 每名玩家最多同时拥有几个 frend(按玩家附近 256 格内已加载实体计数,跨维度/远处未加载的数不到,先够用)。 */
-    public int maxFrendsPerPlayer = 1;
+    public int maxFrendsPerPlayer = 3; // v0.27 多 frend 协作落地,默认放开到 3(分魂+认领制就绪)
+    /** v0.27 协作搭话:伙伴间开工时搭一句("那片归你这片归我"),不想听就关。 */
+    public boolean crewChatter = true;
 
     // ============ frend 属性 ============
     /** 最大生命(玩家同款 20)。 */

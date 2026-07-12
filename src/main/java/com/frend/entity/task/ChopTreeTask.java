@@ -123,6 +123,7 @@ public class ChopTreeTask extends FrendTask {
         double bestD = Double.MAX_VALUE;
         for (BlockPos p : BlockPos.iterate(me.add(-r, -r, -r), me.add(r, r, r))) {
             if (unreachable.contains(p)) continue; // v0.22 放弃过的不再重选
+            if (com.frend.system.FrendCrew.claimedByOther(frend, p)) continue; // v0.27 同伴认领的树不抢
             if (!frend.getWorld().getBlockState(p).isIn(BlockTags.LOGS)) continue;
             double d = p.getSquaredDistance(me);
             if (d < bestD) {
@@ -160,10 +161,12 @@ public class ChopTreeTask extends FrendTask {
             if (a.getY() != b.getY()) return Integer.compare(a.getY(), b.getY());
             return Double.compare(a.getSquaredDistance(me), b.getSquaredDistance(me));
         });
+        for (BlockPos p : tree) com.frend.system.FrendCrew.claim(frend, p); // v0.27 认领整棵:你砍那棵我砍这棵
     }
 
     /** 放弃当前这棵:整棵剩余原木进黑名单(不然下轮又选中同棵的另一块);连弃 3 棵收工。 */
     private void giveUpTree() {
+        for (BlockPos p : tree) com.frend.system.FrendCrew.release(frend, p); // v0.27 弃的树让给同伴(它也许有垫脚料)
         unreachable.addAll(tree); // tree 里就是这棵剩下的全部原木
         tree.clear();
         resetStuck();

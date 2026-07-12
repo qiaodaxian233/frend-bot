@@ -53,6 +53,7 @@ public class FarmTask extends FrendTask {
 
         if (target == null || !isMatureCrop(frend.getWorld().getBlockState(target))) {
             target = findNearestMature(cfg);
+            if (target != null) com.frend.system.FrendCrew.claim(frend, target); // v0.27 认领
             if (target == null) {
                 if (pendingReplant.isEmpty()) {
                     finishLine();
@@ -156,6 +157,7 @@ public class FarmTask extends FrendTask {
         double bestD = Double.MAX_VALUE;
         for (BlockPos p : BlockPos.iterate(me.add(-r, -4, -r), me.add(r, 4, r))) {
             if (!isMatureCrop(frend.getWorld().getBlockState(p))) continue;
+            if (com.frend.system.FrendCrew.claimedByOther(frend, p)) continue; // v0.27 同伴认领的不抢
             double d = me.getSquaredDistance(p);
             if (d < bestD) { bestD = d; best = p.toImmutable(); }
         }

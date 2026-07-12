@@ -55,6 +55,8 @@ public class FrendEntity extends PathAwareEntity {
 
     private Mode mode = Mode.FOLLOW;
     private UUID ownerUuid = null;
+    /** v0.27 分魂:灵魂档里的槽位号(1 起;0=老档未分魂,读写时视为 1)。随实体落盘,死亡换档不丢身份。 */
+    private int soulId = 0;
 
     /** 当前任务(仅 WORK 模式;不落盘)。 */
     private com.frend.entity.task.FrendTask currentTask = null;
@@ -197,7 +199,7 @@ public class FrendEntity extends PathAwareEntity {
         memory.initFirstMet(this.getWorld().getTime()); // 相识时刻只记第一次
         // v0.18 灵魂:有档就接——只灌进"白纸"(新召的),不覆盖已经活过的
         if (FrendConfig.get().soulEnabled && memory.isFresh()) {
-            net.minecraft.nbt.NbtCompound soul = com.frend.system.FrendSoul.load(player.getUuid());
+            net.minecraft.nbt.NbtCompound soul = com.frend.system.FrendSoul.loadSlot(player.getUuid(), soulId); // v0.27 按槽
             if (soul != null && soul.contains("Memory")) {
                 memory.fromNbt(soul.getCompound("Memory"));
                 memory.rebaseTo(this.getWorld().getTime(), soul.getLong("DaysSnapshot"));
@@ -216,6 +218,10 @@ public class FrendEntity extends PathAwareEntity {
     public FrendKnowledge getKnowledge() { return knowledge; }
 
     public UUID getOwnerUuid() { return ownerUuid; }
+
+    public int getSoulId() { return soulId; }
+
+    public void setSoulId(int id) { this.soulId = id; }
 
     public boolean isOwner(PlayerEntity player) {
         return ownerUuid != null && ownerUuid.equals(player.getUuid());
@@ -307,6 +313,11 @@ public class FrendEntity extends PathAwareEntity {
     public void startTask(com.frend.entity.task.FrendTask task, String announce) {
         if (currentTask != null) currentTask.onStop();
         currentTask = task;
+        // v0.27 协作搭话:旁边有伙伴在干同一种活,搭一句(纯风味;真正的分工靠 FrendCrew 认领制)
+        if (FrendConfig.get().crewChatter && this.random.nextFloat() < 0.5f
+                && com.frend.system.FrendCrew.crewmateNearbyDoing(this, task.name(), 12.0)) {
+            sayDelayed("分头干——那片归你,这片归我!");
+        }
         setMode(Mode.WORK);
         if (announce != null) sayDelayed(announce);
     }
@@ -316,6 +327,7 @@ public class FrendEntity extends PathAwareEntity {
         if (currentTask != null) {
             currentTask.onStop();
             currentTask = null;
+            com.frend.system.FrendCrew.releaseAll(this); // v0.27 认领统一清账
             postTaskPickupTicks = 60; // v0.27 收工余韵拾取
         }
         if (mode == Mode.WORK) setMode(Mode.STAY);
@@ -609,8 +621,10 @@ public class FrendEntity extends PathAwareEntity {
                 // 被"跟我来"等切走模式 → 任务自然作废
                 currentTask.onStop();
                 currentTask = null;
+                com.frend.system.FrendCrew.releaseAll(this); // v0.27 认领统一清账
             } else if (!currentTask.tick()) {
                 currentTask = null;
+                com.frend.system.FrendCrew.releaseAll(this); // v0.27 认领统一清账
                 postTaskPickupTicks = 60; // v0.27 修真虫:最后一块的掉落物还在天上飞,拾取多留 3 秒
                 if (mode == Mode.WORK) setMode(Mode.STAY); // v0.15:任务收尾自己换了模式(捡尸后转跟随)就尊重它
             }
@@ -1047,6 +1061,7 @@ public class FrendEntity extends PathAwareEntity {
         super.writeCustomDataToNbt(nbt);
         if (ownerUuid != null) nbt.putUuid("FrendOwner", ownerUuid);
         nbt.putString("FrendMode", mode.name());
+        if (soulId > 0) nbt.putInt("SoulId", soulId); // v0.27 分魂槽位
         if (hasHome()) {
             nbt.putInt("HomeX", homePos.getX());
             nbt.putInt("HomeY", homePos.getY());
@@ -1082,6 +1097,7 @@ public class FrendEntity extends PathAwareEntity {
             mode = Mode.FOLLOW;
         }
         if (mode == Mode.WORK) mode = Mode.STAY; // 任务不落盘,重载后回待命
+        if (nbt.contains("SoulId")) soulId = nbt.getInt("SoulId"); // v0.27
         if (nbt.contains("HomeDim")) {
             homePos = new BlockPos(nbt.getInt("HomeX"), nbt.getInt("HomeY"), nbt.getInt("HomeZ"));
             homeDimension = nbt.getString("HomeDim");

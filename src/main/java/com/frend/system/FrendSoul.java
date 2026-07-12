@@ -25,8 +25,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p><b>设计反转声明</b>:v0.4 刻意让记忆随实体死亡消失("这一个伙伴的一生");
  * 作者要求互通后,记忆升格为灵魂——<b>死亡和换档都带不走它</b>。死亡台词随之从诀别改为
- * "我们还会再见的"(因为这是真的)。多只 frend 共享同一份灵魂档(按主人 UUID 键),
- * 默认单只场景无感;多只场景的分魂留待协作里程碑。
+ * "我们还会再见的"(因为这是真的)。v0.27 分魂兑现(协作里程碑):
+ * 档案格式升 v2——{FormatV:2, LastSeenMillis, Frends:{"1":{...},"2":{...}}},每只朋友一个槽位,
+ * <b>各自的名字、记忆、见识互不串档</b>。旧档(平铺格式)读到时视为 1 号魂原地迁移,下次存盘自然升级。
  *
  * <p><b>重逢</b>:玩家下线记时刻;上线算离开天数,压进待问候表;frend 见到你(聊天半径内)
  * 按离开时长分级问候——几天是想念,一个月是催泪。
@@ -68,24 +69,80 @@ public final class FrendSoul {
 
     // ===================== 存取 =====================
 
-    /** 灵魂存盘:记忆全量 + 名字 + 天数快照 + 现在时刻。失败只记日志,不影响游戏。 */
+    /** 灵魂存盘(v0.27 按槽):记忆全量 + 名字 + 天数快照写进自己的槽位,现在时刻写顶层。 */
     public static void save(FrendEntity frend) {
         UUID owner = frend.getOwnerUuid();
         if (owner == null) return;
         try {
-            NbtCompound soul = new NbtCompound();
-            soul.put("Memory", frend.getMemory().toNbt());
-            soul.put("Knowledge", frend.getKnowledge().toNbt()); // v0.19 见识随魂走
-            soul.putLong("DaysSnapshot", frend.getMemory().daysTogether(frend.getWorld().getTime()));
-            soul.putLong("LastSeenMillis", System.currentTimeMillis());
-            if (frend.hasCustomName()) soul.putString("Name", frend.getDisplayName().getString());
+            NbtCompound root = loadRoot(owner);
+            if (root == null) root = new NbtCompound();
+            root.putInt("FormatV", 2);
+            NbtCompound slot = new NbtCompound();
+            slot.put("Memory", frend.getMemory().toNbt());
+            slot.put("Knowledge", frend.getKnowledge().toNbt()); // v0.19 见识随魂走
+            slot.putLong("DaysSnapshot", frend.getMemory().daysTogether(frend.getWorld().getTime()));
+            if (frend.hasCustomName()) slot.putString("Name", frend.getDisplayName().getString());
+            NbtCompound frends = root.contains("Frends") ? root.getCompound("Frends") : new NbtCompound();
+            frends.put(String.valueOf(Math.max(1, frend.getSoulId())), slot); // 0=老档实体,归 1 号魂
+            root.put("Frends", frends);
+            root.putLong("LastSeenMillis", System.currentTimeMillis());
             Path p = soulPath(owner);
             Files.createDirectories(p.getParent());
             // 【待编译验证】NbtIo.writeCompressed(NbtCompound, Path) 1.21.1 签名(老签名收 File/OutputStream)
-            NbtIo.writeCompressed(soul, p);
+            NbtIo.writeCompressed(root, p);
         } catch (Exception e) {
             Frend.LOGGER.warn("[frend] 灵魂存盘失败(不影响游戏): {}", e.toString());
         }
+    }
+
+    /** v0.27 读根档并做 v1→v2 视图迁移(读时包一层,不写盘;下次 save 自然落成 v2)。 */
+    public static NbtCompound loadRoot(UUID owner) {
+        NbtCompound root = load(owner);
+        if (root == null) return null;
+        if (!root.contains("Frends") && root.contains("Memory")) { // v1 平铺 → 视为 1 号魂
+            NbtCompound slot = new NbtCompound();
+            slot.put("Memory", root.getCompound("Memory"));
+            if (root.contains("Knowledge")) slot.put("Knowledge", root.getCompound("Knowledge"));
+            if (root.contains("Name")) slot.putString("Name", root.getString("Name"));
+            slot.putLong("DaysSnapshot", root.getLong("DaysSnapshot"));
+            NbtCompound frends = new NbtCompound();
+            frends.put("1", slot);
+            NbtCompound v2 = new NbtCompound();
+            v2.putInt("FormatV", 2);
+            v2.put("Frends", frends);
+            if (root.contains("LastSeenMillis")) v2.putLong("LastSeenMillis", root.getLong("LastSeenMillis"));
+            return v2;
+        }
+        return root;
+    }
+
+    /** v0.27 取某一号魂;没有返回 null。slot≤0 视为 1(老实体兼容)。 */
+    public static NbtCompound loadSlot(UUID owner, int slot) {
+        NbtCompound root = loadRoot(owner);
+        if (root == null || !root.contains("Frends")) return null;
+        NbtCompound frends = root.getCompound("Frends");
+        String k = String.valueOf(Math.max(1, slot));
+        return frends.contains(k) ? frends.getCompound(k) : null;
+    }
+
+    /** v0.27 召唤分魂:最小的"已存档且未附体"槽位(老朋友优先召回);都在场/没档 → 开新号。 */
+    public static int pickSlot(UUID owner, java.util.Set<Integer> embodied) {
+        int max = 0;
+        NbtCompound root = loadRoot(owner);
+        if (root != null && root.contains("Frends")) {
+            java.util.List<Integer> stored = new java.util.ArrayList<>();
+            for (String k : root.getCompound("Frends").getKeys()) {
+                try { stored.add(Integer.parseInt(k)); } catch (NumberFormatException ignored) {}
+            }
+            java.util.Collections.sort(stored);
+            for (int slot : stored) {
+                if (!embodied.contains(slot)) return slot;
+                if (slot > max) max = slot;
+            }
+        }
+        int cand = max + 1;
+        while (embodied.contains(cand)) cand++;
+        return cand;
     }
 
     /** 读灵魂档;没有/损坏返回 null。 */

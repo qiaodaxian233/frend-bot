@@ -61,6 +61,7 @@ public class MineTask extends FrendTask {
 
         if (target == null || !matches(frend.getWorld().getBlockState(target)) || !safeToMine(target)) {
             target = findNearest(cfg);
+            if (target != null) com.frend.system.FrendCrew.claim(frend, target); // v0.27 认领
             if (target == null) {
                 frend.say(mined == 0
                         ? (kind == Kind.STONE ? "附近没露头的石头,带我去山边或洞口再喊我。"
@@ -107,6 +108,7 @@ public class MineTask extends FrendTask {
         for (BlockPos p : BlockPos.iterate(me.add(-r, -r, -r), me.add(r, r, r))) {
             if (p.equals(below)) continue;
             if (unreachable.contains(p)) continue; // v0.23 放弃过的不再重选
+            if (com.frend.system.FrendCrew.claimedByOther(frend, p)) continue; // v0.27 同伴认领的不抢
             if (!matches(frend.getWorld().getBlockState(p))) continue;
             if (!exposed(p)) continue;
             if (!safeToMine(p)) continue;

@@ -349,6 +349,35 @@ public final class FrendGameTests implements FabricGameTest {
                 + " 尸壳血=" + husk.getHealth() + "@" + husk.getBlockPos().toShortString() + dump(f)));
     }
 
+    // ===================== 第 12 关:多 frend 协作(认领制分工,v0.27) =====================
+
+    @GameTest(templateName = ARENA, tickLimit = 1500, batchId = "frendCrew")
+    public void crewChopsSeparateTrees(TestContext ctx) {
+        tune();
+        floor(ctx);
+        // 两棵双层树 + 两只 frend 非对称站位:认领制该让它们一人一棵——
+        // 断言两树全倒且<b>两只包里都有木头</b>(没分工的话可能一只全包圆,另一只空手)
+        for (int y = 1; y <= 2; y++) {
+            ctx.setBlockState(new BlockPos(3, y, 3), Blocks.OAK_LOG.getDefaultState());
+            ctx.setBlockState(new BlockPos(13, y, 13), Blocks.OAK_LOG.getDefaultState());
+        }
+        FrendEntity a = spawnFrend(ctx, 5, 1, 5);
+        FrendEntity b = spawnFrend(ctx, 11, 1, 11);
+        give(a, new ItemStack(Items.IRON_AXE));
+        give(b, new ItemStack(Items.IRON_AXE));
+        a.startTask(new com.frend.entity.task.ChopTreeTask(a), null);
+        b.startTask(new com.frend.entity.task.ChopTreeTask(b), null);
+        pollUntil(ctx, 1400, () -> {
+            ctx.assertTrue(ctx.getBlockState(new BlockPos(3, 1, 3)).isAir()
+                            && ctx.getBlockState(new BlockPos(3, 2, 3)).isAir()
+                            && ctx.getBlockState(new BlockPos(13, 1, 13)).isAir()
+                            && ctx.getBlockState(new BlockPos(13, 2, 13)).isAir(),
+                    "两棵树没砍完" + dump(a) + dump(b));
+            ctx.assertTrue(invHas(a, Items.OAK_LOG) && invHas(b, Items.OAK_LOG),
+                    "认领制没分开(有人空手,说明抢了同一棵)" + dump(a) + dump(b));
+        });
+    }
+
     // ===================== 附加关:记忆 NBT 往返(纯逻辑,不用地形) =====================
 
     @GameTest(templateName = ARENA, tickLimit = 60)

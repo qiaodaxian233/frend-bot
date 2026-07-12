@@ -63,7 +63,7 @@ public final class FrendCommands {
                         // v0.10 朋友,不是仆人:起名字。聊天说"你以后叫XX"也行。
                         .then(CommandManager.literal("name")
                                 .then(CommandManager.argument("名字", com.mojang.brigadier.arguments.StringArgumentType.greedyString())
-                                        .executes(ctx -> forEachOwned(ctx, f ->
+                                        .executes(ctx -> nearestOwned(ctx, f -> // v0.27 起名只落最近那只
                                                 f.renameBy(com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "名字"))))))
 
                         .then(CommandManager.literal("work")
@@ -161,6 +161,10 @@ public final class FrendCommands {
 
         FrendEntity frend = new FrendEntity(ModEntities.FREND, w);
         frend.refreshPositionAndAngles(p.getX(), p.getY(), p.getZ(), p.getYaw(), 0.0f);
+        // v0.27 分魂:在场伙伴的槽让开,老朋友的空槽优先召回;顺序关键——先定槽再 setOwner(灵魂按槽加载)
+        java.util.Set<Integer> embodied = new java.util.HashSet<>();
+        for (FrendEntity e : owned) embodied.add(Math.max(1, e.getSoulId()));
+        frend.setSoulId(com.frend.system.FrendSoul.pickSlot(p.getUuid(), embodied));
         frend.setOwner(p);
         frend.setMode(FrendEntity.Mode.FOLLOW);
         w.spawnEntity(frend);
@@ -222,6 +226,24 @@ public final class FrendCommands {
     // ===================== 工具 =====================
 
     /** 对附近 128 格内、主人是执行者的所有 frend 执行 action;一个都没有则报错提示。 */
+    /** v0.27 多 frend:只对最近那只执行(起名/点名用,不然一句话全体改名)。 */
+    private static int nearestOwned(CommandContext<ServerCommandSource> ctx, java.util.function.Consumer<FrendEntity> action) {
+        ServerPlayerEntity p = ctx.getSource().getPlayer();
+        if (p == null) {
+            ctx.getSource().sendError(Text.literal("只能由玩家执行"));
+            return 0;
+        }
+        List<FrendEntity> owned = p.getServerWorld().getEntitiesByClass(FrendEntity.class,
+                p.getBoundingBox().expand(COMMAND_RADIUS), f -> f.isAlive() && f.isOwner(p));
+        if (owned.isEmpty()) {
+            ctx.getSource().sendError(Text.literal("附近 " + (int) COMMAND_RADIUS + " 格内没有你的 frend(先 /frend summon,或走近一点)"));
+            return 0;
+        }
+        owned.sort((a, b) -> Double.compare(p.squaredDistanceTo(a), p.squaredDistanceTo(b)));
+        action.accept(owned.get(0));
+        return 1;
+    }
+
     private static int forEachOwned(CommandContext<ServerCommandSource> ctx, java.util.function.Consumer<FrendEntity> action) {
         ServerPlayerEntity p = ctx.getSource().getPlayer();
         if (p == null) {
