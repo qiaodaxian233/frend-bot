@@ -32,9 +32,11 @@ import java.util.List;
  * 测试嫌慢)、重逢与纪念日的"催泪感"(机器只能验字符串,验不了眼眶)、LLM 闲聊(要外部服务)——
  * 它是朋友,朋友的可爱只有你能验收。
  *
- * <p>【待编译验证】本文件整体属高危新面:GameTest 注解字段(templateName/tickLimit)、
- * TestContext 的 getAbsolutePos/setBlockState/getBlockState/spawnEntity/assertTrue/succeedWhen、
- * FabricGameTest 接口路径(fabric-api.gametest.v1)。报错优先怀疑这些名字。
+ * <p><b>API 名字来源(不再赌)</b>:首编译 succeedWhen 全军覆没(那是 Mojang 官方映射名)后,
+ * 稀疏克隆 FabricMC/yarn@1.21.1 查 TestContext.mapping 实证——轮询式完成叫
+ * <b>addFinalTask</b>(method_35993;旁证:addInstantFinalTask=立即判一次,
+ * addFinalTaskWithDuration=指定 tick 判),其余 getAbsolutePos/setBlockState/getBlockState/
+ * spawnEntity/assertTrue/complete 均映射在案;@GameTest 字段 templateName/tickLimit 同证。
  */
 public final class FrendGameTests implements FabricGameTest {
 
@@ -85,7 +87,7 @@ public final class FrendGameTests implements FabricGameTest {
         tune();
         floor(ctx);
         FrendEntity f = spawnFrend(ctx, 8, 1, 8);
-        ctx.succeedWhen(() -> ctx.assertTrue(f.isAlive(), "frend 召出来就没活下来"));
+        ctx.addFinalTask(() -> ctx.assertTrue(f.isAlive(), "frend 召出来就没活下来"));
     }
 
     // ===================== 第 2 关:砍树(整棵收) =====================
@@ -98,7 +100,7 @@ public final class FrendGameTests implements FabricGameTest {
         FrendEntity f = spawnFrend(ctx, 4, 1, 8);
         give(f, new ItemStack(Items.IRON_AXE));
         f.startTask(new com.frend.entity.task.ChopTreeTask(f), null);
-        ctx.succeedWhen(() -> {
+        ctx.addFinalTask(() -> {
             for (int y = 1; y <= 3; y++) {
                 ctx.assertTrue(ctx.getBlockState(new BlockPos(12, y, 8)).isAir(), "第 " + y + " 层原木还立着");
             }
@@ -116,7 +118,7 @@ public final class FrendGameTests implements FabricGameTest {
         FrendEntity f = spawnFrend(ctx, 8, 1, 8);
         give(f, new ItemStack(Items.DIRT, 8));
         f.startTask(new com.frend.entity.task.ChopTreeTask(f), null);
-        ctx.succeedWhen(() -> {
+        ctx.addFinalTask(() -> {
             ctx.assertTrue(ctx.getBlockState(new BlockPos(8, 5, 8)).isAir(), "悬空原木没砍下来(登高柱没起作用)");
             ctx.assertTrue(invHas(f, Items.OAK_LOG), "砍了但没进包");
         });
@@ -131,7 +133,7 @@ public final class FrendGameTests implements FabricGameTest {
         ctx.setBlockState(new BlockPos(8, 7, 8), Blocks.OAK_LOG.getDefaultState()); // 脚上 6 格,超 workReach
         FrendEntity f = spawnFrend(ctx, 8, 1, 8); // 不给垫脚材料 → 只能放弃
         f.startTask(new com.frend.entity.task.ChopTreeTask(f), null);
-        ctx.succeedWhen(() -> {
+        ctx.addFinalTask(() -> {
             ctx.assertTrue(!f.hasActiveTask(), "够不着还赖着不收工(死循环回归)");
             ctx.assertTrue(!ctx.getBlockState(new BlockPos(8, 7, 8)).isAir(), "没材料居然砍到了?判定漏了");
         });
@@ -166,7 +168,7 @@ public final class FrendGameTests implements FabricGameTest {
         ctx.assertTrue(open != null, "塞子换成泥土还找不到路(挖掘寻路失灵)");
         boolean digs = open.stream().anyMatch(s -> !s.toBreak().isEmpty());
         ctx.assertTrue(digs, "找到路了但没计划挖任何块(不合常理)");
-        ctx.succeedWhen(() -> {});
+        ctx.addFinalTask(() -> {});
     }
 
     // ===================== 第 6 关:寻路搭桥(v0.24) =====================
@@ -189,7 +191,7 @@ public final class FrendGameTests implements FabricGameTest {
         ctx.assertTrue(path != null, "有 8 块料在手,3 格沟居然过不去");
         boolean bridges = path.stream().anyMatch(s -> s.type() == FrendPathfinder.MoveType.BRIDGE);
         ctx.assertTrue(bridges, "过沟的路里没有一步是搭桥(BRIDGE 未生效)");
-        ctx.succeedWhen(() -> {});
+        ctx.addFinalTask(() -> {});
     }
 
     // ===================== 第 7 关:挖石头 =====================
@@ -203,7 +205,7 @@ public final class FrendGameTests implements FabricGameTest {
         FrendEntity f = spawnFrend(ctx, 5, 1, 8);
         give(f, new ItemStack(Items.STONE_PICKAXE));
         f.startTask(new com.frend.entity.task.MineTask(f, com.frend.entity.task.MineTask.Kind.STONE), null);
-        ctx.succeedWhen(() -> {
+        ctx.addFinalTask(() -> {
             ctx.assertTrue(ctx.getBlockState(new BlockPos(12, 1, 8)).isAir()
                             && ctx.getBlockState(new BlockPos(12, 2, 8)).isAir(),
                     "石头没挖完");
@@ -223,7 +225,7 @@ public final class FrendGameTests implements FabricGameTest {
         FrendEntity f = spawnFrend(ctx, 6, 1, 8);
         give(f, new ItemStack(Items.WHEAT_SEEDS, 4)); // 预给种子,补种不靠捡拾时序
         f.startTask(new com.frend.entity.task.FarmTask(f), null);
-        ctx.succeedWhen(() -> {
+        ctx.addFinalTask(() -> {
             var state = ctx.getBlockState(new BlockPos(10, 2, 8));
             ctx.assertTrue(state.isOf(Blocks.WHEAT), "收完没补种(坑空着)");
             ctx.assertTrue(state.get(CropBlock.AGE) == 0, "补种的不是新苗(age!=0)");
@@ -240,7 +242,7 @@ public final class FrendGameTests implements FabricGameTest {
         FrendEntity f = spawnFrend(ctx, 6, 1, 8);
         give(f, new ItemStack(Items.RAW_IRON, 3), new ItemStack(Items.COAL, 2));
         f.startTask(new com.frend.entity.task.SmeltTask(f), null);
-        ctx.succeedWhen(() -> ctx.assertTrue(invHas(f, Items.IRON_INGOT),
+        ctx.addFinalTask(() -> ctx.assertTrue(invHas(f, Items.IRON_INGOT),
                 "三块生铁进炉,一块铁锭没出来(装料/火候/收炉哪步断了)"));
     }
 
@@ -254,7 +256,7 @@ public final class FrendGameTests implements FabricGameTest {
         give(f, new ItemStack(Items.STONE_SWORD));
         f.setMode(FrendEntity.Mode.STAY); // 看家岗位就在脚下
         HuskEntity husk = ctx.spawnEntity(EntityType.HUSK, new BlockPos(10, 1, 8));
-        ctx.succeedWhen(() -> ctx.assertTrue(!husk.isAlive(), "怪进了岗位圈,它没动手(看家分支没触发)"));
+        ctx.addFinalTask(() -> ctx.assertTrue(!husk.isAlive(), "怪进了岗位圈,它没动手(看家分支没触发)"));
     }
 
     // ===================== 附加关:记忆 NBT 往返(纯逻辑,不用地形) =====================
@@ -266,7 +268,7 @@ public final class FrendGameTests implements FabricGameTest {
         a.addNote("钻石在河边");
         FrendMemory b = new FrendMemory();
         b.fromNbt(a.toNbt());
-        ctx.succeedWhen(() -> {
+        ctx.addInstantFinalTask(() -> {
             ctx.assertTrue(b.hasNotes(), "记事在 NBT 往返里丢了");
             ctx.assertTrue(a.daysTogether(48000L) == b.daysTogether(48000L), "相识天数往返后对不上");
         });
