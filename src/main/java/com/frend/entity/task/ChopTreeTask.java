@@ -73,7 +73,8 @@ public class ChopTreeTask extends FrendTask {
         }
 
         BlockPos target = tree.get(0);
-        if (!moveNear(target, cfg.workReach)) {
+        if (!moveNearSmart(target, cfg.workReach)) { // v0.23 开路寻路:原版没戏就自己挖/垫出一条
+            if (isCarving()) return true; // 正在开路,别触发放弃逻辑
             // 已在树正下方、目标在头顶(悬空树/高枝) → 搭登高柱,而不是干瞪眼
             double dx = target.getX() + 0.5 - frend.getX();
             double dz = target.getZ() + 0.5 - frend.getZ();

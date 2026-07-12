@@ -28,6 +28,8 @@ public class MineTask extends FrendTask {
     private final Kind kind;
     private BlockPos target = null;
     private int mined = 0;
+    /** v0.23 放弃过的目标(黑名单),findNearest 跳过——放弃要真的放弃。 */
+    private final java.util.HashSet<BlockPos> unreachable = new java.util.HashSet<>();
     /** v0.6:本次任务是否已经解释过"那块不敢挖"(一次任务最多念一次)。 */
     private boolean saidDanger = false;
 
@@ -69,9 +71,11 @@ public class MineTask extends FrendTask {
             }
         }
 
-        if (!moveNear(target, cfg.workReach)) {
+        if (!moveNearSmart(target, cfg.workReach)) { // v0.23 开路寻路
+            if (isCarving()) return true; // 开路中,别放弃
             if (stuckTicks() > 20 * 8) {
-                target = null; // 这块过不去,换目标
+                unreachable.add(target); // v0.23 修同款bug:放弃要进黑名单,不然findNearest又选中它
+                target = null;
                 resetStuck();
             }
             return true;
@@ -102,6 +106,7 @@ public class MineTask extends FrendTask {
         double bestD = Double.MAX_VALUE;
         for (BlockPos p : BlockPos.iterate(me.add(-r, -r, -r), me.add(r, r, r))) {
             if (p.equals(below)) continue;
+            if (unreachable.contains(p)) continue; // v0.23 放弃过的不再重选
             if (!matches(frend.getWorld().getBlockState(p))) continue;
             if (!exposed(p)) continue;
             if (!safeToMine(p)) continue;

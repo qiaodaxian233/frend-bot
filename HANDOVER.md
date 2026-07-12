@@ -28,9 +28,11 @@
 
 - frend = **本地运行的 Minecraft 陪伴机器人**:类玩家 NPC,像朋友一样陪玩家生存/聊天/干活/打怪,完全离线。蓝图见 `docs/DESIGN.md`,一句话产品定义:*不是外挂,不是刷材料机器,而是会记住你、陪你冒险的本地 AI 朋友*。
 - 核心架构原则(v0.4 起生效,现在就要守):**LLM 永不直接控制游戏**,只产出意图,执行走白名单技能 DSL。
-- 当前进度:**里程碑 23 / v0.22(实测首修:登高柱)已落地**;m1~m20 已本地编译全绿,m21~m23 待编译;**实测已开张**(作者游戏内首测,第一份报障已修:砍树死循环+登高柱)。
+- 当前进度:**里程碑 24 / v0.23(开路寻路,Baritone 思路)已落地**;m1~m20 已本地编译全绿,m21~m24 待编译;实测已开张(首份报障已修)。
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
+
+m24(v0.23 开路寻路,作者两次点名参考 Baritone):真读了(沙箱浅克隆精读 ActionCosts/MovementHelper/Moves/MovementPillar/MovementAscend/AStarPathFinder),LGPL 思路引用零搬运,学到四条在 DEVLOG m24 与 FrendPathfinder 类文档双记账(tick 计价 4.633/COST_INF=1e6 防溢出/挖垫是路径的一步/bestSoFar 部分路径);FrendPathfinder=有界同步 A*(2400 节点+10ms 双熔断,半径箱 40,WALK/ASCEND/DESCEND 落1~3计摔价/PILLAR 材料预算随节点/DIG_DOWN 只挖一层),红线收敛=天然白名单外等于基岩+不游泳+危险寻路期剪枝;执行层 moveNearSmart=原版信 3 秒→A*→breakTick 挖(重校验世界变化)+pillarUpTick 垫+原版导航走,单步 6s 看门狗,弃路回落 stuck 照旧;接线 ChopTree/Mine(isCarving 不放弃),顺手修 MineTask 同款黑名单 bug(放弃不进名单又重选);Deposit/Farm 暂不接(回家路动土观感差实测后定);config 不动 v18。 · 上一里程碑
 
 m23(v0.22 实测首修 🎉第一份真实报障:作者实测悬空树"换一棵"无限刷屏+点名"不会给自己脚下搭方块"):病灶一="换一棵"是假的(无黑名单,findNearestLog 重选同棵)→ giveUpTree 整棵剩余原木进 unreachable(只记入口不够,BFS 会从同棵另一块再进)+连弃 3 棵收工如实汇报;病灶二=悬空树 moveNear 三维距离永远走不到 → FrendTask 基类新增脚手架公共机关(pillarUpTick=头顶树叶先敲/瞬移1格+放块 8tick 一层/材料白名单土圆石系/上限8;tearDownScaffoldTick=6tick 一层材料回包不掉落逐格落无摔伤;discardScaffoldNow=打断瞬拆兜底;回收校验不凭空造物资),ChopTreeTask 接入(水平≤2.5 且目标在头顶→停导航防寻路拽下柱→登高;没材料一次性提示);取舍=瞬移模拟跳放(服务端 mob 真跳不可控)+水中垫块拆后水不复原小账+"不搭桥"红线不变(登高是垂直自救);config 不动 v18。 · 上一里程碑
 

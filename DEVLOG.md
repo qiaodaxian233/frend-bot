@@ -704,3 +704,41 @@ ChopTreeTask 接入:水平贴近(≤2.5 格)且目标在头顶 → 停导航(防
 **【待编译验证】新增**:BlockState#getSoundGroup / BlockSoundGroup#getPlaceSound、
 Block#getBlockFromItem、Block#asItem、Entity#refreshPositionAndAngles(自体传送用法)。
 config 无新字段(柱高上限 8 硬编码,不膨胀配置)。
+
+---
+
+## 里程碑 24 / v0.23 — 开路寻路(作者两次点名"参考 Baritone 源码,他还有自动寻路")
+
+**这回真读了**:沙箱浅克隆 github.com/cabaletta/baritone,精读 ActionCosts / MovementHelper /
+Moves / MovementPillar / MovementAscend / AStarPathFinder。**思路引用声明:Baritone 是 LGPL,
+我们学思路零搬运,数值自算结构自写**,学到的逐条记账(也写在 FrendPathfinder 类文档里):
+1. **代价一律以 tick 计**(走一格 4.633 = 20/4.317m/s,跳一格额外 ≈2);COST_INF 取 1e6 而非
+   MAX_VALUE——代价要相加,MAX_VALUE 一加溢出成负数(leijurv 注释原话的教训);
+2. **移动类型各配一个代价函数**(TRAVERSE/ASCEND/DESCEND/PILLAR/DOWNWARD):非法返 INF,
+   合法返 tick 含挡路方块挖掘耗时+垫块放置耗时——<b>"挖/垫本身是路径的一步"</b>,这是
+   Baritone 能"哪都去得了"的根,也是原版 mob 寻路(世界不可改)的死穴;
+3. getMiningDurationTicks:流体不挖、危险(avoidBreaking)不挖、**头顶悬沙连锁下落也计价**;
+4. AStarPathFinder 的 bestSoFar:**到不了终点返回"离目标最近的部分路径"**——走近点也比干瞪眼强;
+   外加节点数/耗时双熔断。
+
+**FrendPathfinder(com.frend.pathing,frend 版微缩)**:有界同步 A*(节点 2400/耗时 10ms 双熔断,
+半径箱 40×40×±24,不卡 tick);五种移动 WALK/ASCEND/DESCEND(落1~3格计摔价)/PILLAR(材料预算
+随节点记账)/DIG_DOWN(**只挖一层**:脚下的下面必须实心,不打无底洞);部分路径要求至少省 2 格
+才动身。**与 Baritone 分道的收敛(防拆家红线优先)**:挖掘白名单=天然方块(与 TunnelTask 同规
++树系),**人造方块在寻路里等于基岩**,宁绕十里不碰一块;不游泳(水路=不通,v1 收敛);
+危险判定在寻路阶段就剪枝(贴岩浆/顶液体六邻规则与 miningDanger 同规,静态复算)。
+
+**执行层(FrendTask#moveNearSmart)**:原版寻路优先信 3 秒 → 没戏调 FrendPathfinder →
+逐步执行:挖走 breakTick(带破坏动画,执行时**重校验**——有人放了箱子/涌了岩浆就弃路)、
+垫走 pillarUpTick(v0.22 登高柱机关原样复用,含回收账本)、走交原版导航(相邻一格它够可靠);
+单步 6 秒看门狗;弃路自动回落原版+stuck 计数照旧,调用方原有放弃逻辑零改动。开路且真要
+动土时说一句"这路不通……我自己开一条,挖的都是天然方块,放心"(每任务一次)。
+
+**接线**:ChopTreeTask/MineTask 的接近改 moveNearSmart(isCarving 期间不触发放弃);
+**顺手修 MineTask 同款黑名单 bug**(放弃只 target=null,findNearest 又选中同块——砍树那个
+病的双胞胎,unreachable 黑名单同方修复)。DepositTask/FarmTask 等暂不接:回家/种田的路
+本该是通的,路上动土观感差,实测后再定。
+
+**【待编译验证】新增**:BlockState#getCollisionShape(BlockView,BlockPos)/VoxelShape#isEmpty、
+AbstractBlockState#getHardness(BlockView,BlockPos)、Direction.Type.HORIZONTAL 可迭代、
+BlockPos#asLong。config 无新字段。

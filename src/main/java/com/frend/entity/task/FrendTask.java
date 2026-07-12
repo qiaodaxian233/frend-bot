@@ -63,6 +63,117 @@ public abstract class FrendTask {
 
     protected void resetStuck() { stuckTicks = 0; }
 
+    // ===================== v0.23 开路寻路(学 Baritone:挖/垫都是路径的一步) =====================
+    // 用法:任务里把 moveNear 换成 moveNearSmart 即可。先信原版寻路 3 秒;没戏就调
+    // FrendPathfinder 算一条"允许挖天然方块、允许垫块"的路,逐步执行——挖走 breakTick
+    // (带破坏动画),垫走 pillarUpTick(带音效节奏),失败自动回落原版 + stuck 计数照旧。
+
+    private java.util.List<com.frend.pathing.FrendPathfinder.Step> carvePath = null;
+    private int carveIndex = 0;
+    private int carveStepTicks = 0;
+    private int carveCooldown = 0;   // 算过没找到路的冷却,防止每 tick 白算
+    private boolean saidCarve = false;
+
+    /** 正在照开出来的路走(调用方在这期间别触发自己的放弃逻辑)。 */
+    protected boolean isCarving() { return carvePath != null; }
+
+    /** 包里可垫的方块总数(封顶 16,寻路预算用)。 */
+    private int scaffoldBudget() {
+        int n = 0;
+        var inv = frend.getInventory();
+        for (int i = 0; i < inv.size() && n < 16; i++) {
+            if (isScaffoldItem(inv.getStack(i).getItem())) n += inv.getStack(i).getCount();
+        }
+        return Math.min(16, n);
+    }
+
+    /**
+     * 智能接近:够得着返回 true。原版寻路优先;卡 3 秒转开路 A*(挖天然方块/垫块都算路);
+     * 开路也没戏就回落原版寻路 + stuck 累计,调用方原有的放弃逻辑照常工作。
+     */
+    protected boolean moveNearSmart(BlockPos pos, double reach) {
+        double d2 = frend.squaredDistanceTo(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
+        if (d2 <= reach * reach) {
+            carvePath = null;
+            stuckTicks = 0;
+            frend.getNavigation().stop();
+            return true;
+        }
+        if (carvePath != null) {
+            followCarveTick();
+            stuckTicks = 0; // 开路进行中不算卡死(它自己有单步 6 秒的看门狗)
+            return false;
+        }
+        if (carveCooldown > 0) carveCooldown--;
+
+        boolean arrived = moveNear(pos, reach); // 原版寻路(带 stuck 累计)
+        if (arrived) return true;
+
+        if (stuckTicks > 60 && carveCooldown == 0) { // 3 秒原版没戏 → 开路
+            var path = com.frend.pathing.FrendPathfinder.find(
+                    frend.getWorld(), frend.getBlockPos(), pos, reach, scaffoldBudget(), 2400);
+            if (path != null) {
+                carvePath = path;
+                carveIndex = 0;
+                carveStepTicks = 0;
+                boolean modifies = path.stream().anyMatch(s -> s.place() || !s.toBreak().isEmpty());
+                if (modifies && !saidCarve) {
+                    saidCarve = true;
+                    frend.sayDelayed("这路不通……我自己开一条,挖的都是天然方块,放心。");
+                }
+            } else {
+                carveCooldown = 100; // 5 秒后再算,别把 CPU 耗在死路上
+            }
+        }
+        return false;
+    }
+
+    /** 照开出来的路走一 tick:先挖挡路的(重校验),再垫/再走;单步 6 秒不过 = 弃路回落。 */
+    private void followCarveTick() {
+        if (carveIndex >= carvePath.size()) { carvePath = null; return; }
+        var step = carvePath.get(carveIndex);
+        if (++carveStepTicks > 20 * 6) { carvePath = null; return; }
+
+        BlockPos to = step.to();
+        double dx = to.getX() + 0.5 - frend.getX();
+        double dz = to.getZ() + 0.5 - frend.getZ();
+        if (dx * dx + dz * dz <= 0.45 && Math.abs(to.getY() - frend.getY()) <= 0.6) {
+            carveIndex++;                      // 这步到位,下一步
+            carveStepTicks = 0;
+            if (carveIndex >= carvePath.size()) carvePath = null;
+            return;
+        }
+
+        // 垫块步:交给登高柱机关(自带节奏/音效/回收账本)
+        if (step.type() == com.frend.pathing.FrendPathfinder.MoveType.PILLAR) {
+            frend.getNavigation().stop();
+            if (!pillarUpTick(255)) carvePath = null; // 垫不了(材料没了/头顶硬)= 弃路
+            return;
+        }
+
+        // 先清挡路方块(执行时重校验:世界可能变了,不天然/危险了就弃路)
+        for (BlockPos b : step.toBreak()) {
+            var state = frend.getWorld().getBlockState(b);
+            if (state.isAir() || com.frend.pathing.FrendPathfinder.passable(frend.getWorld(), b)) continue;
+            if (com.frend.pathing.FrendPathfinder.breakCost(frend.getWorld(), b, state)
+                    >= com.frend.pathing.FrendPathfinder.COST_INF) {
+                carvePath = null; // 情况变了(有人放了箱子/涌了岩浆),这条路作废
+                return;
+            }
+            frend.getNavigation().stop();
+            int ticks = Math.max(6, (int) (state.getHardness(frend.getWorld(), b) * 30));
+            breakTick(b, ticks);
+            return; // 一 tick 只磨一块
+        }
+
+        if (step.type() == com.frend.pathing.FrendPathfinder.MoveType.DIG_DOWN) {
+            return; // 脚下挖穿后重力自己接手,等下落到位
+        }
+        // 走:相邻一格,原版导航足够可靠(上一格的跳跃它自己会)
+        frend.getNavigation().startMovingTo(to.getX() + 0.5, to.getY(), to.getZ() + 0.5,
+                FrendConfig.get().followSpeed);
+    }
+
     /**
      * 对 pos "慢慢挖"一 tick:朝它看、周期性挥手、播破坏进度动画;
      * 累计满 totalTicks 后真正破坏(掉落物照常掉)并返回 true。换目标自动重置进度。
