@@ -849,3 +849,17 @@ FabricGameTest 接口路径、loom runs gametest 语法(inherit server)、结构
 用已实证原语自建 pollUntil——runAtTick 每 10 tick 查一次吞异常,达标 complete(),
 到点最后一查不吞 = 正式判负。另:11 关并排同跑,看家关尸壳可能与隔壁考场 frend
 隔墙互殴 → batchId 单开批次隔离(批次间串行)。
+
+### m27 补记二:自动测试首战战果——三只真虫落网(全是玩家必踩坑)
+报告快照(dump 立功)定罪:
+**虫一·"当着一手好镐说没镐"**:autoEquipBestWeapon 40-tick 周期把镐/斧当"最好武器"对调进主手
+(离开 SimpleInventory),findUsableTool 只扫背包 → MineTask 开场"没镐子挖不了"收工原地没动一步。
+真实复现路径:递它一把镐且没给别的武器,必踩。修:findUsableTool 先看主手再扫包——工具攥在手里当然算能用。
+**虫二·"都在我包里"是谎话**:拾取只在任务期间(10tick/2.5格),最后一块的掉落物还在天上飞
+任务就收、拾取跟着停——砍树/悬空两关"树砍光了包 0 格"。修:节奏 5tick、范围 3.5、
+收工/stopTask 后<b>余韵拾取 60 tick</b>——站着把地上的捡完再走,像人。
+**虫三·无主撤退站桩挨打到死**:FrendRetreatGoal 只有 owner!=null 分支(绕主人身后),
+主人不在时原地立正挨揍——看家关尸壳只剩 0.37 血,frend 先倒了,冤。修:else 分支背向
+getAttacker 逃 8 格,活着比姿势重要。
+另:红线关首轮误判是考卷错(find 按设计返回 bestSoFar 部分路径,null 断言不成立,
+改断"一步不挖木板+永远到不了终点");登高柱在自动测试里<b>实证成功</b>(悬空原木真砍下来了)。

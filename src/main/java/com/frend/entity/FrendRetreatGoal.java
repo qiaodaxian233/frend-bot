@@ -57,6 +57,18 @@ public class FrendRetreatGoal extends Goal {
             } else {
                 frend.getNavigation().stop();
             }
+        } else {
+            // v0.27 修真虫(自动测试首捕):主人不在,原逻辑是站桩挨打到死(尸壳只剩 0.37 血,它先倒了)
+            // ——没有身后可绕,就背向敌人跑,活着比姿势重要。
+            net.minecraft.entity.LivingEntity foe = frend.getAttacker();
+            if (foe != null && foe.isAlive()) {
+                net.minecraft.util.math.Vec3d diff = frend.getPos().subtract(foe.getPos());
+                if (diff.lengthSquared() > 1.0E-4) {
+                    net.minecraft.util.math.Vec3d away = diff.normalize();
+                    frend.getNavigation().startMovingTo(frend.getX() + away.x * 8.0, frend.getY(),
+                            frend.getZ() + away.z * 8.0, FrendConfig.get().followSpeed * 1.3);
+                }
+            }
         }
 
         if (retreatTicks <= 0) {

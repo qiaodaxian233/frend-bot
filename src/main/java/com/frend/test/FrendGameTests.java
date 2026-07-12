@@ -180,7 +180,7 @@ public final class FrendGameTests implements FabricGameTest {
         f.startTask(new com.frend.entity.task.ChopTreeTask(f), null);
         pollUntil(ctx, 1750, () -> {
             ctx.assertTrue(ctx.getBlockState(new BlockPos(8, 5, 8)).isAir(), "悬空原木没砍下来(登高柱没起作用)" + dump(f));
-            ctx.assertTrue(invHas(f, Items.OAK_LOG), "砍了但没进包");
+            ctx.assertTrue(invHas(f, Items.OAK_LOG), "砍了但没进包" + dump(f));
         });
     }
 

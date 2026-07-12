@@ -58,6 +58,8 @@ public class FrendEntity extends PathAwareEntity {
 
     /** 当前任务(仅 WORK 模式;不落盘)。 */
     private com.frend.entity.task.FrendTask currentTask = null;
+    /** v0.27 收工后余韵拾取(tick):任务刚结束时最后一块的掉落物还没落稳,多捡 3 秒。 */
+    private int postTaskPickupTicks = 0;
     private int eatCooldown = 0;
 
     /** 27 格随身背包。 */
@@ -314,6 +316,7 @@ public class FrendEntity extends PathAwareEntity {
         if (currentTask != null) {
             currentTask.onStop();
             currentTask = null;
+            postTaskPickupTicks = 60; // v0.27 收工余韵拾取
         }
         if (mode == Mode.WORK) setMode(Mode.STAY);
         if (announce != null) sayDelayed(announce);
@@ -326,6 +329,13 @@ public class FrendEntity extends PathAwareEntity {
     /** 找一把还能用的工具(耐久留量走配置);没有返回 EMPTY。 */
     public ItemStack findUsableTool(net.minecraft.registry.tag.TagKey<net.minecraft.item.Item> tag) {
         int reserve = FrendConfig.get().toolReserveDurability;
+        // v0.27 修真虫(自动测试首捕):自动换装会把镐/斧当武器装进主手(对调出背包),
+        // 只扫背包会当着一手好镐说"没镐子"——工具攥在手里,当然算能用。
+        ItemStack hand = this.getMainHandStack();
+        if (!hand.isEmpty() && hand.isIn(tag)
+                && !(hand.isDamageable() && hand.getMaxDamage() - hand.getDamage() <= reserve)) {
+            return hand;
+        }
         for (int i = 0; i < inventory.size(); i++) {
             ItemStack s = inventory.getStack(i);
             if (s.isEmpty() || !s.isIn(tag)) continue;
@@ -601,14 +611,17 @@ public class FrendEntity extends PathAwareEntity {
                 currentTask = null;
             } else if (!currentTask.tick()) {
                 currentTask = null;
+                postTaskPickupTicks = 60; // v0.27 修真虫:最后一块的掉落物还在天上飞,拾取多留 3 秒
                 if (mode == Mode.WORK) setMode(Mode.STAY); // v0.15:任务收尾自己换了模式(捡尸后转跟随)就尊重它
             }
         }
 
-        // 干活时顺手捡脚边掉落物(只在任务中捡,平时不跟主人抢地上的东西)
-        if (currentTask != null && this.age % 10 == 0) {
+        // 干活时顺手捡脚边掉落物(只在任务中捡,平时不跟主人抢地上的东西);
+        // v0.27:节奏 10→5、范围 2.5→3.5、收工后余韵 60 tick——"都在我包里"必须是真话
+        if (postTaskPickupTicks > 0) postTaskPickupTicks--;
+        if ((currentTask != null || postTaskPickupTicks > 0) && this.age % 5 == 0) {
             for (net.minecraft.entity.ItemEntity item : this.getWorld().getEntitiesByClass(
-                    net.minecraft.entity.ItemEntity.class, this.getBoundingBox().expand(2.5),
+                    net.minecraft.entity.ItemEntity.class, this.getBoundingBox().expand(3.5),
                     e -> e.isAlive() && e.isOnGround())) {
                 ItemStack rest = inventory.addStack(item.getStack());
                 if (rest.isEmpty()) item.discard();
