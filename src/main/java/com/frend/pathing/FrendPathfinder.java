@@ -34,6 +34,11 @@ import java.util.PriorityQueue;
  *       头顶悬沙要把连锁下落也算进代价;</li>
  *   <li>AStarPathFinder 的 bestSoFar:<b>到不了终点就返回"离目标最近的部分路径"</b>——
  *       走近一点也比原地干瞪眼强;外加节点数/耗时双保险熔断。</li>
+ *   <li>v0.25 续吃三口:MovementDiagonal(斜走省 41% 路,两肩必须双通防切角)、
+ *       MovementFall 的精神(超 3 格带伤下落,疼痛计价,血厚才肯跳)、
+ *       后台计算的<b>本质</b>——不卡刻。Baritone 敢开线程是因为自带世界快照
+ *       (BlockStateInterface);原版 World 非线程安全,我们改<b>主线程分片续算</b>
+ *       (Session,每 tick 限节点数+纳秒双预算),零卡顿同效果,风险小十倍,取舍在案。</li>
  * </ol>
  *
  * <p><b>frend 版收敛(跟 Baritone 不同的地方,防拆家红线优先)</b>:
@@ -49,7 +54,12 @@ public final class FrendPathfinder {
     private static final double JUMP_EXTRA = 2.0;     // 上一格的额外耗时
     private static final double PLACE = 4.0;          // 掏方块+放置一次
     private static final double PILLAR_NUDGE = 2.0;   // 垫块吃材料,轻微劝退:能走就别垫
-    private static final double[] FALL_COST = {0, 1.0, 3.0, 7.0}; // 落 1/2/3 格
+    private static final double[] FALL_COST = {0, 1.0, 3.0, 7.0}; // 落 1/2/3 格(无伤)
+
+    /** 摔落计价:3 格内查表;超 3 格 = 带伤下落(学 MovementFall 的精神),每格伤按 12 tick 心理价。 */
+    private static double fallCost(int drop) {
+        return drop <= 3 ? FALL_COST[drop] : 7.0 + (drop - 3) * 12.0;
+    }
     private static final double BRIDGE_WALK = 8.0;    // 学 MovementTraverse:搭桥按潜行速度计,比走贵
     public static final double COST_INF = 1_000_000;  // 学 Baritone:别用 MAX_VALUE,相加会溢出
 
@@ -57,6 +67,8 @@ public final class FrendPathfinder {
     private static final long TIME_BUDGET_NANOS = 10_000_000L; // 10ms 熔断
 
     public enum MoveType { WALK, ASCEND, DESCEND, PILLAR, DIG_DOWN, BRIDGE }
+
+    private static final int[][] DIAGONALS = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
 
     /** 一步:类型 + 落脚点 + 计划要挖的方块(执行时会重校验) + 是否垫块。 */
     public record Step(MoveType type, BlockPos to, List<BlockPos> toBreak, boolean place) {}
@@ -76,50 +88,91 @@ public final class FrendPathfinder {
      */
     public static List<Step> find(World world, BlockPos start, BlockPos goal,
                                   double reach, int scaffoldBudget, int maxNodes, BreakClock clock) {
-        long deadline = System.nanoTime() + TIME_BUDGET_NANOS;
-        double reachSq = reach * reach;
+        Session s = new Session(world, start, goal, reach, scaffoldBudget, maxNodes, 3, clock);
+        if (!s.tickCalc(maxNodes, TIME_BUDGET_NANOS)) s.finish(); // 同步便捷入口:一片算完,超时收部分路
+        return s.result();
+    }
 
-        Map<Long, Node> all = new HashMap<>();
-        PriorityQueue<Node> open = new PriorityQueue<>((a, b) -> Double.compare(a.f, b.f));
+    /**
+     * v0.25 可续算会话(吃"异步"的本质=不卡刻):调用方每 tick 给一小片预算(节点数+纳秒双限),
+     * 算完(成败皆算完)返回 true,result() 取路——大预算长途也不卡服务端一刻。
+     */
+    public static final class Session {
+        private final World world;
+        private final BlockPos start, goal;
+        private final double reachSq;
+        private final int scaffoldBudget, maxNodes, maxDrop;
+        private final BreakClock clock;
+        private final Map<Long, Node> all = new HashMap<>();
+        private final PriorityQueue<Node> open = new PriorityQueue<>((a, b) -> Double.compare(a.f, b.f));
+        private Node best;
+        private double bestH;
+        private final double startH;
+        private int expanded = 0;
+        private boolean done = false;
+        private List<Step> result = null;
 
-        Node startNode = new Node(start.getX(), start.getY(), start.getZ());
-        startNode.g = 0;
-        startNode.f = heuristic(startNode, goal);
-        all.put(key(startNode.x, startNode.y, startNode.z), startNode);
-        open.add(startNode);
-
-        Node best = startNode;                       // bestSoFar:学 Baritone 的部分路径
-        double bestH = heuristic(startNode, goal);
-
-        int expanded = 0;
-        while (!open.isEmpty()) {
-            if ((++expanded & 0xFF) == 0 && System.nanoTime() > deadline) break; // 每 256 个查一次表
-            if (expanded > maxNodes) break;
-
-            Node cur = open.poll();
-            if (cur.closed) continue;
-            cur.closed = true;
-
-            if (distSqToCenter(cur, goal) <= reachSq) return reconstruct(cur); // 到了
-
-            double h = heuristic(cur, goal);
-            if (h < bestH) { bestH = h; best = cur; }
-
-            expand(world, cur, goal, start, scaffoldBudget, all, open, clock);
+        public Session(World world, BlockPos start, BlockPos goal, double reach,
+                       int scaffoldBudget, int maxNodes, int maxDrop, BreakClock clock) {
+            this.world = world;
+            this.start = start;
+            this.goal = goal;
+            this.reachSq = reach * reach;
+            this.scaffoldBudget = scaffoldBudget;
+            this.maxNodes = maxNodes;
+            this.maxDrop = Math.max(1, Math.min(FALL_HARD_CAP, maxDrop));
+            this.clock = clock;
+            Node startNode = new Node(start.getX(), start.getY(), start.getZ());
+            startNode.g = 0;
+            startNode.f = heuristic(startNode, goal);
+            all.put(key(startNode.x, startNode.y, startNode.z), startNode);
+            open.add(startNode);
+            best = startNode;
+            startH = bestH = heuristic(startNode, goal);
         }
 
-        // 部分路径:至少比出发点近 2 格才值得动身,不然等于白跑
-        if (best != startNode && heuristic(startNode, goal) - bestH >= 2 * WALK) {
-            return reconstruct(best);
+        /** 推进一片:最多 nodeBudget 个节点或 nanoBudget 纳秒。返回是否算完。 */
+        public boolean tickCalc(int nodeBudget, long nanoBudget) {
+            if (done) return true;
+            long deadline = System.nanoTime() + nanoBudget;
+            int sliceEnd = expanded + nodeBudget;
+            while (!open.isEmpty() && expanded < sliceEnd && expanded < maxNodes) {
+                if ((expanded & 0x3F) == 0 && System.nanoTime() > deadline) return false; // 本片时间到,下 tick 续
+                Node cur = open.poll();
+                if (cur.closed) continue;
+                cur.closed = true;
+                expanded++;
+                if (distSqToCenter(cur, goal) <= reachSq) { // 到了
+                    result = reconstruct(cur);
+                    done = true;
+                    return true;
+                }
+                double h = heuristic(cur, goal);
+                if (h < bestH) { bestH = h; best = cur; }
+                expand(world, cur, goal, start, scaffoldBudget, maxDrop, all, open, clock);
+            }
+            if (open.isEmpty() || expanded >= maxNodes) finish();
+            return done;
         }
-        return null;
+
+        /** 收尾:没到终点则看部分路径值不值(至少比出发点近 2 格)。 */
+        public void finish() {
+            if (done) return;
+            done = true;
+            if (startH - bestH >= 2 * WALK) result = reconstruct(best);
+        }
+
+        /** 算完后取路;null = 彻底没戏。 */
+        public List<Step> result() { return result; }
     }
 
     // ===================== 扩展(五种移动,学 Moves 的组织法) =====================
 
+    private static final int FALL_HARD_CAP = 8; // 再高真摔死,多少血都不许
+
     private static void expand(World world, Node cur, BlockPos goal, BlockPos origin,
-                               int scaffoldBudget, Map<Long, Node> all, PriorityQueue<Node> open,
-                               BreakClock clock) {
+                               int scaffoldBudget, int maxDrop, Map<Long, Node> all,
+                               PriorityQueue<Node> open, BreakClock clock) {
         int x = cur.x, y = cur.y, z = cur.z;
         // 半径箱:出发点为中心,别越搜越野
         if (Math.abs(x - origin.getX()) > MAX_RADIUS || Math.abs(z - origin.getZ()) > MAX_RADIUS
@@ -137,13 +190,13 @@ public final class FrendPathfinder {
                 if (standable(world, new BlockPos(nx, y - 1, nz))) {
                     relax(all, open, cur, nx, y, nz, WALK + breaks, MoveType.WALK, toBreak, false, goal);
                 } else {
-                    for (int drop = 1; drop <= 3; drop++) { // 走下去(不挖地板,纯下落)
+                    for (int drop = 1; drop <= maxDrop; drop++) { // 走下去(3 格内无伤;更深=带伤下落,血厚才敢)
                         BlockPos floor = new BlockPos(nx, y - drop - 1, nz);
                         BlockPos air = new BlockPos(nx, y - drop, nz);
                         if (!passable(world, air)) break; // 落道里有东西挡着,摔不下去
                         if (standable(world, floor)) {
                             relax(all, open, cur, nx, y - drop, nz,
-                                    WALK + breaks + FALL_COST[drop], MoveType.DESCEND, toBreak, false, goal);
+                                    WALK + breaks + fallCost(drop), MoveType.DESCEND, toBreak, false, goal);
                             break;
                         }
                     }
@@ -176,6 +229,17 @@ public final class FrendPathfinder {
                             WALK + JUMP_EXTRA + b2, MoveType.ASCEND, tb2, false, goal);
                 }
             }
+        }
+
+        // --- DIAGONAL(学 MovementDiagonal):斜走省 41% 路,像人;不挖不垫,
+        //     两个直角"肩膀"必须双通(Baritone 同规:斜穿实体拐角会卡住/受伤) ---
+        for (int[] dd : DIAGONALS) {
+            int nx = x + dd[0], nz = z + dd[1];
+            if (!standable(world, new BlockPos(nx, y - 1, nz))) continue;
+            if (!passable(world, new BlockPos(nx, y, nz)) || !passable(world, new BlockPos(nx, y + 1, nz))) continue;
+            if (!passable(world, new BlockPos(x + dd[0], y, z)) || !passable(world, new BlockPos(x + dd[0], y + 1, z))) continue;
+            if (!passable(world, new BlockPos(x, y, z + dd[1])) || !passable(world, new BlockPos(x, y + 1, z + dd[1]))) continue;
+            relax(all, open, cur, nx, y, nz, WALK * 1.4142, MoveType.WALK, List.of(), false, goal);
         }
 
         // --- PILLAR:原地垫一块上 1 格(材料预算内) ---

@@ -73,6 +73,9 @@ public abstract class FrendTask {
     private int carveStepTicks = 0;
     private int carveCooldown = 0;   // 算过没找到路的冷却,防止每 tick 白算
     private boolean saidCarve = false;
+    /** v0.25 分片续算会话(每 tick 3ms/300 节点,大预算长途也不卡刻)。 */
+    private com.frend.pathing.FrendPathfinder.Session carveCalc = null;
+    private BlockPos carveGoal = null; // 会话/路径对应的目标,目标一换旧账作废
 
     /** 正在照开出来的路走(调用方在这期间别触发自己的放弃逻辑)。 */
     protected boolean isCarving() { return carvePath != null; }
@@ -95,36 +98,57 @@ public abstract class FrendTask {
         double d2 = frend.squaredDistanceTo(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
         if (d2 <= reach * reach) {
             carvePath = null;
+            carveCalc = null;
             stuckTicks = 0;
             frend.getNavigation().stop();
             return true;
+        }
+        if (carveGoal != null && !carveGoal.equals(pos)) { // 目标换了,旧路旧账全作废
+            carvePath = null;
+            carveCalc = null;
+            carveGoal = null;
         }
         if (carvePath != null) {
             followCarveTick();
             stuckTicks = 0; // 开路进行中不算卡死(它自己有单步 6 秒的看门狗)
             return false;
         }
+
+        // v0.25 分片续算:每 tick 一小片(3ms/300 节点),算路期间原版寻路照蹭,不卡刻
+        if (carveCalc != null) {
+            if (carveCalc.tickCalc(300, 3_000_000L)) {
+                var path = carveCalc.result();
+                carveCalc = null;
+                if (path != null) {
+                    carvePath = path;
+                    carveIndex = 0;
+                    carveStepTicks = 0;
+                    boolean modifies = path.stream().anyMatch(s -> s.place() || !s.toBreak().isEmpty());
+                    if (modifies && !saidCarve) {
+                        saidCarve = true;
+                        frend.sayDelayed("这路不通……我自己开一条,挖的都是天然方块,放心。");
+                    }
+                    followCarveTick();
+                    stuckTicks = 0;
+                    return false;
+                }
+                carveCooldown = 100; // 彻底没戏,5 秒后再议
+            }
+        }
         if (carveCooldown > 0) carveCooldown--;
 
         boolean arrived = moveNear(pos, reach); // 原版寻路(带 stuck 累计)
-        if (arrived) return true;
+        if (arrived) {
+            carveCalc = null;
+            return true;
+        }
 
-        if (stuckTicks > 60 && carveCooldown == 0) { // 3 秒原版没戏 → 开路
-            var path = com.frend.pathing.FrendPathfinder.find(
-                    frend.getWorld(), frend.getBlockPos(), pos, reach, scaffoldBudget(), 2400,
+        if (stuckTicks > 60 && carveCooldown == 0 && carveCalc == null) { // 3 秒原版没戏 → 起一个开路会话
+            int maxDrop = frend.getHealth() > 14.0f ? 6 : 3; // 血厚才肯带伤跳崖(学 MovementFall 的精神)
+            carveCalc = new com.frend.pathing.FrendPathfinder.Session(
+                    frend.getWorld(), frend.getBlockPos(), pos, reach, scaffoldBudget(), 6000, maxDrop,
                     this::carveTicksFor);
-            if (path != null) {
-                carvePath = path;
-                carveIndex = 0;
-                carveStepTicks = 0;
-                boolean modifies = path.stream().anyMatch(s -> s.place() || !s.toBreak().isEmpty());
-                if (modifies && !saidCarve) {
-                    saidCarve = true;
-                    frend.sayDelayed("这路不通……我自己开一条,挖的都是天然方块,放心。");
-                }
-            } else {
-                carveCooldown = 100; // 5 秒后再算,别把 CPU 耗在死路上
-            }
+            carveGoal = pos.toImmutable();
         }
         return false;
     }
@@ -184,6 +208,15 @@ public abstract class FrendTask {
 
         if (step.type() == com.frend.pathing.FrendPathfinder.MoveType.DIG_DOWN) {
             return; // 脚下挖穿后重力自己接手,等下落到位
+        }
+        // 大落差(>3 格带伤下落):原版导航不认这种路,用 MoveControl 直线走出边缘,重力接手
+        // 【待编译验证】MoveControl#moveTo(double,double,double,double speed)
+        if (step.type() == com.frend.pathing.FrendPathfinder.MoveType.DESCEND
+                && frend.getY() - to.getY() > 3.2) {
+            frend.getNavigation().stop();
+            frend.getMoveControl().moveTo(to.getX() + 0.5, to.getY(), to.getZ() + 0.5,
+                    FrendConfig.get().followSpeed);
+            return;
         }
         // 走:相邻一格,原版导航足够可靠(上一格的跳跃它自己会)
         frend.getNavigation().startMovingTo(to.getX() + 0.5, to.getY(), to.getZ() + 0.5,

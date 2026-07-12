@@ -28,9 +28,11 @@
 
 - frend = **本地运行的 Minecraft 陪伴机器人**:类玩家 NPC,像朋友一样陪玩家生存/聊天/干活/打怪,完全离线。蓝图见 `docs/DESIGN.md`,一句话产品定义:*不是外挂,不是刷材料机器,而是会记住你、陪你冒险的本地 AI 朋友*。
 - 核心架构原则(v0.4 起生效,现在就要守):**LLM 永不直接控制游戏**,只产出意图,执行走白名单技能 DSL。
-- 当前进度:**里程碑 25 / v0.24(吃透 Baritone:搭桥+真挖速+LGPL)已落地**;m1~m20 已本地编译全绿,m21~m25 待编译;实测已开张。**项目许可:LGPL-3.0**(含 Baritone 改写代码,出处声明在 FrendPathfinder 头部)。
+- 当前进度:**里程碑 26 / v0.25(Baritone 吃收官:斜走/续算/带伤下落)已落地**;**m1~m25 全部编译全绿**(m21~m25 作者一次 BUILD SUCCESSFUL),m26 待编译;实测进行中。项目许可:LGPL-3.0。Baritone 消化完毕:能吃的都吃了,不吃的理由在 DEVLOG m26。
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
+
+m26(v0.25 把能吃的都吃了,作者指示能吃的都吃不必吃的不吃;🎉m21~m25 一次 BUILD SUCCESSFUL 全绿销账):吃三口=MovementDiagonal 斜走(两肩双通防切角,WALK×√2,不挖不垫)+"异步"本质(World 非线程安全,Baritone 靠世界快照才敢开线程;改 Session 可续算,A* 状态驻留每 tick 300 节点+3ms 双预算,预算 2400→6000,长途不卡刻,取舍在案)+MovementFall 精神(4~6 格带伤下落疼痛计价每格 12tick,血>7 心才肯跳,硬上限 8,执行层大落差 MoveControl 直线出边缘);不吃单理由在案=CachedWorld(陪伴实体不出加载区)/水面落点(不游泳落水=困)/Parkour(mob 速度控制不精,有桥不缺这口)/MineProcess 对照(exposed 判定同思想,Y 层已在 deep,记账完事)/Input 模拟(玩家器官,真实体用不上);config 不动 v18。 · 上一里程碑
 
 m25(v0.24 吃透 Baritone,作者授权搬代码"可以吃透他"):授权变更在案(思路引用→授权改写),合规=项目转 LGPL-3.0(LICENSE 落仓库根,v1.0 待办顺势销账)+FrendPathfinder 头部出处声明升级;红线修订="不搭桥"解禁(先例同 v0.18 灵魂反转,人造方块白名单纹丝不动);BRIDGE=忠实改写 MovementTraverse backplace(落脚没地板贴脚下放块,跨沟跨水,水上能搭=变相解不游泳,岩浆不放,潜行速 8.0/格计价,5 向 canPlaceAgainst 扫描省去在案,**桥不拆**取舍在案);真挖速=忠实移植 ToolSet#calculateSpeedVsBlock 换 Yarn 映射(对上工具硬度×30/速度否则×100,附魔项略),BreakClock 注入口规划与执行同源一本账,开路真用工具真掉耐久(bestToolFor 学 getBestSlot);config 不动 v18。 · 上一里程碑
 
