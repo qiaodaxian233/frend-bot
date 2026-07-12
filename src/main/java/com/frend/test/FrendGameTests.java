@@ -392,4 +392,26 @@ public final class FrendGameTests implements FabricGameTest {
             ctx.assertTrue(a.daysTogether(48000L) == b.daysTogether(48000L), "相识天数往返后对不上");
         });
     }
+
+    // ===================== 第 13 关:知识库 NBT 往返(v0.28 清账五类保档) =====================
+
+    @GameTest(templateName = ARENA, tickLimit = 60)
+    public void knowledgeNbtRoundtrip(TestContext ctx) {
+        com.frend.entity.FrendKnowledge a = new com.frend.entity.FrendKnowledge();
+        a.recordRaiderKill();
+        a.recordRaiderKill();
+        a.recordLightningHit();
+        a.recordNewPet("uuid-1", "旺财");
+        a.recordJukebox();
+        a.recordBossKilled("wither");
+        com.frend.entity.FrendKnowledge b = new com.frend.entity.FrendKnowledge();
+        b.fromNbt(a.toNbt());
+        ctx.addInstantFinalTask(() -> {
+            ctx.assertTrue(b.getRaidersKilled() == 2, "袭击者战绩往返丢了");
+            ctx.assertTrue(b.getLightningHits() == 1, "雷劈勋章往返丢了");
+            ctx.assertTrue(b.getPetsKnown() == 1, "宠物见识往返丢了");
+            ctx.assertTrue(b.getJukeboxHeard() == 1, "唱片见识往返丢了");
+            ctx.assertTrue(b.recordBossKilled("wither") == null, "凋灵高光的一生一次去重往返后失效(又能重复感慨了)");
+        });
+    }
 }

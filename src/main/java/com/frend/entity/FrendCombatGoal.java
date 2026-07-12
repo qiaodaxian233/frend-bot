@@ -337,6 +337,7 @@ public class FrendCombatGoal extends Goal {
                 long now = frend.getWorld().getTime();
                 String mobName = target.getName().getString();
                 frend.getKnowledge().recordKill(mobName); // v0.19 知识入账
+                frend.onSpecialKill(target); // v0.28 Boss/袭击者特账
                 String milestone = frend.getMemory().recordKill(mobName, now);
                 if (defendingOwner) {
                     String rescueLine = frend.getMemory().recordRescue(mobName, now);

@@ -747,6 +747,11 @@ public class FrendEntity extends PathAwareEntity {
             String byName = source.getAttacker() instanceof net.minecraft.entity.LivingEntity la
                     ? la.getName().getString() : null;
             knowledge.recordHurtBy(byName, creeperBlast);
+            // v0.28 清账:被雷劈了——大难不死的勋章,一生一次的感慨
+            if (source.isOf(net.minecraft.entity.damage.DamageTypes.LIGHTNING_BOLT)) {
+                String zap = knowledge.recordLightningHit();
+                if (zap != null) sayDelayed(zap);
+            }
         }
         return hurt;
     }
@@ -802,12 +807,33 @@ public class FrendEntity extends PathAwareEntity {
         if (this.getWorld().isClient || !this.isAlive()) return;
         long now = this.getWorld().getTime();
         knowledge.recordKill(mob.getName().getString()); // v0.19 知识入账
+        onSpecialKill(mob); // v0.28 Boss/袭击者特账
         String line = getMemory().recordKill(mob.getName().getString(), now);
         if (line != null) sayDelayed(line);
         if (mob.getTarget() instanceof PlayerEntity p && isOwner(p)) {
             String r = getMemory().recordRescue(mob.getName().getString(), now);
             if (r != null) sayDelayed(r);
         }
+    }
+
+    /**
+     * v0.28 知识清账:特殊击杀入账(Boss 一生一次高光进大事记;袭击者计数)。
+     * 白刃收尾(战斗 Goal)和箭杀(AFTER_DEATH)统一走这里,firsts 去重保证不重复感慨。
+     */
+    public void onSpecialKill(net.minecraft.entity.LivingEntity mob) {
+        if (this.getWorld().isClient) return;
+        String line = null;
+        long now = this.getWorld().getTime();
+        if (mob instanceof net.minecraft.entity.boss.WitherEntity) {
+            line = knowledge.recordBossKilled("wither");
+            if (line != null) getMemory().record(now, "我们一起打倒了凋灵");
+        } else if (mob instanceof net.minecraft.entity.boss.dragon.EnderDragonEntity) {
+            line = knowledge.recordBossKilled("dragon");
+            if (line != null) getMemory().record(now, "我们一起打倒了末影龙");
+        } else if (mob instanceof net.minecraft.entity.raid.RaiderEntity) {
+            line = knowledge.recordRaiderKill();
+        }
+        if (line != null) sayDelayed(line);
     }
 
     /**
@@ -875,6 +901,14 @@ public class FrendEntity extends PathAwareEntity {
                 sayDelayed(line);
             }
         }
+        // v0.28 知识清账:四路轮询感知,错峰分摊(每路都是 5 秒一查,互相岔开 1 秒)
+        if (FrendConfig.get().knowledgeEnabled) {
+            int phase = this.age % 100;
+            if (phase == 20) tickBossSighting();
+            else if (phase == 40) tickThunderAwareness();
+            else if (phase == 60) tickPetAwareness();
+            else if (phase == 80) tickJukeboxAwareness();
+        }
         String dim = this.getWorld().getRegistryKey().getValue().toString();
         if (!dim.equals(lastDimension)) {
             boolean known = lastDimension != null; // 刚生成/刚加载时 lastDimension 为空,静默记录不喊话
@@ -892,6 +926,68 @@ public class FrendEntity extends PathAwareEntity {
         if (this.isOnFire() && fireTalkCooldown <= 0 && this.isAlive()) {
             fireTalkCooldown = 20 * 30;
             sayDelayed("烫烫烫!没事,打完再说!");
+        }
+    }
+
+    /** v0.28 Boss 目击:32 格内头一回见着活的凋灵/末影龙,一生一次的震撼(直发不走闲聊闸,这场面值得)。 */
+    private void tickBossSighting() {
+        var box = this.getBoundingBox().expand(32);
+        if (!this.getWorld().getEntitiesByClass(
+                net.minecraft.entity.boss.WitherEntity.class, box, e -> e.isAlive()).isEmpty()) {
+            String line = knowledge.recordBossSeen("wither");
+            if (line != null) sayDelayed(line);
+        }
+        if (!this.getWorld().getEntitiesByClass(
+                net.minecraft.entity.boss.dragon.EnderDragonEntity.class, box, e -> e.isAlive()).isEmpty()) {
+            String line = knowledge.recordBossSeen("dragon");
+            if (line != null) sayDelayed(line);
+        }
+    }
+
+    /** v0.28 打雷感知:头一回听见雷雨(一生一次,礼貌走闲聊闸)。 */
+    private void tickThunderAwareness() {
+        if (this.getWorld().isThundering()) {
+            String line = knowledge.recordThunder();
+            if (line != null && ambientCooldown <= 0) {
+                ambientCooldown = 20 * 60;
+                sayDelayed(line);
+            }
+        }
+    }
+
+    /** v0.28 宠物感知:16 格内你家驯服的小家伙(狼/猫/鹦鹉),没见过的认识一下。 */
+    private void tickPetAwareness() {
+        if (ownerUuid == null) return;
+        var pets = this.getWorld().getEntitiesByClass(
+                net.minecraft.entity.passive.TameableEntity.class,
+                this.getBoundingBox().expand(16),
+                e -> e.isTamed() && ownerUuid.equals(e.getOwnerUuid()));
+        for (var pet : pets) {
+            String line = knowledge.recordNewPet(pet.getUuidAsString(), pet.getName().getString());
+            if (line != null && ambientCooldown <= 0) {
+                ambientCooldown = 20 * 60;
+                sayDelayed(line);
+                break; // 一次认识一只,礼多不怪但话多怪
+            }
+        }
+    }
+
+    /** v0.28 唱片感知:身边 5 格有正在放歌的唱片机(HAS_RECORD 方块状态),头一回有感慨。 */
+    private void tickJukeboxAwareness() {
+        net.minecraft.util.math.BlockPos c = this.getBlockPos();
+        for (net.minecraft.util.math.BlockPos p : net.minecraft.util.math.BlockPos.iterate(
+                c.add(-5, -3, -5), c.add(5, 3, 5))) {
+            var st = this.getWorld().getBlockState(p);
+            if (st.isOf(net.minecraft.block.Blocks.JUKEBOX)
+                    && st.contains(net.minecraft.state.property.Properties.HAS_RECORD)
+                    && st.get(net.minecraft.state.property.Properties.HAS_RECORD)) {
+                String line = knowledge.recordJukebox();
+                if (line != null && ambientCooldown <= 0) {
+                    ambientCooldown = 20 * 60;
+                    sayDelayed(line);
+                }
+                return; // 找到一台就够了
+            }
         }
     }
 

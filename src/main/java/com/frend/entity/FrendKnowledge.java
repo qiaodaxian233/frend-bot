@@ -49,6 +49,17 @@ public class FrendKnowledge {
     private int cropsHarvested = 0;
     /** 自己死过几回(灵魂记得每一世)。 */
     private int myDeaths = 0;
+    /** v0.28 清账:干翻过几个抢村子的强盗(袭击者)。 */
+    private int raidersKilled = 0;
+    /** v0.28 清账:被雷劈过几回(大难不死的勋章)。 */
+    private int lightningHits = 0;
+    /** v0.28 清账:听过几回唱片。 */
+    private int jukeboxHeard = 0;
+    /** v0.28 清账:认得的你家宠物(UUID,带上限忘最旧)。 */
+    private final LinkedHashSet<String> petIds = new LinkedHashSet<>();
+    /** 认过的宠物总数(petIds 会忘,总账单独记)。 */
+    private int petsKnown = 0;
+    private static final int CAP_PETS = 16;
 
     private static boolean off() { return !FrendConfig.get().knowledgeEnabled; }
 
@@ -100,12 +111,88 @@ public class FrendKnowledge {
     /** v0.21 种田见识(销 v0.19 挂账)。 */
     public void recordHarvest() { if (!off()) cropsHarvested++; }
 
+    // ===================== v0.28 清账五类 =====================
+
+    /** Boss 击杀(type=wither/dragon):一生一次的高光时刻,有话说就返回。 */
+    public String recordBossKilled(String type) {
+        if (off()) return null;
+        if ("wither".equals(type) && firsts.add("wither_kill")) {
+            return "凋灵……我们把凋灵打倒了!这事我要记一辈子——不是谁都有这种朋友的。";
+        }
+        if ("dragon".equals(type) && firsts.add("dragon_kill")) {
+            return "末影龙倒下的那一刻……我这辈子值了。跟你混,真好。";
+        }
+        return null;
+    }
+
+    /** Boss 目击(第一次见着活的,吓归吓,话得说硬气):一生一次。 */
+    public String recordBossSeen(String type) {
+        if (off()) return null;
+        if ("wither".equals(type) && firsts.add("wither_seen")) {
+            return "那、那就是凋灵?!……你要真打,我陪你。说好了,谁也不许先倒下。";
+        }
+        if ("dragon".equals(type) && firsts.add("dragon_seen")) {
+            return "末影龙……书上画的都没它一半吓人。深呼吸——我在你旁边。";
+        }
+        return null;
+    }
+
+    /** 干翻袭击者:头一个有话说,第 10 个有里程碑。 */
+    public String recordRaiderKill() {
+        if (off()) return null;
+        raidersKilled++;
+        if (firsts.add("raider")) return "抢村子的强盗……这种怪我最看不惯。放马过来!";
+        if (raidersKilled == 10) return "第 10 个强盗了——村里人该给咱立块碑。";
+        return null;
+    }
+
+    /** 被雷劈了(damage 源判定):活下来就是勋章,一生一次的感慨。 */
+    public String recordLightningHit() {
+        if (off()) return null;
+        lightningHits++;
+        if (firsts.add("lightning")) {
+            return "……我被雷劈了?!我还活着?哈、哈哈,我还活着!这事你可得帮我记着——我可是被雷劈过的人。";
+        }
+        return null;
+    }
+
+    /** 头一回听见打雷(不是被劈,是听见动静)。 */
+    public String recordThunder() {
+        if (off() || !firsts.add("thunder")) return null;
+        return "打雷了……你听这动静。别站树底下,靠我近点。";
+    }
+
+    /** 认识你家新宠物(uuid 去重);认识了就返回一句欢迎。 */
+    public String recordNewPet(String uuid, String petName) {
+        if (off() || uuid == null || !petIds.add(uuid)) return null;
+        while (petIds.size() > CAP_PETS) petIds.remove(petIds.iterator().next());
+        petsKnown++;
+        if (firsts.add("pet")) {
+            return "咦,你带了个小家伙?" + petName + "是吧——以后咱们一起,多个伴。";
+        }
+        return "又多了个新伙伴?" + petName + ",记住了。你身边越来越热闹了。";
+    }
+
+    /** 听见唱片:头一回有感慨,之后只记账。 */
+    public String recordJukebox() {
+        if (off()) return null;
+        jukeboxHeard++;
+        if (firsts.add("jukebox")) return "这就是唱片的声音?……真好听。干完活能再放一遍吗?";
+        return null;
+    }
+
     // ===================== 知识改变行为 =====================
 
     /** 教训换算:被苦力怕炸得越多,离它越远(封顶 +3 格)。战斗 Goal 直接用。 */
     public double creeperFear() {
         return Math.min(3, creeperBlasts);
     }
+
+    // 取数口(自动测试与调试面板用)
+    public int getRaidersKilled() { return raidersKilled; }
+    public int getLightningHits() { return lightningHits; }
+    public int getPetsKnown() { return petsKnown; }
+    public int getJukeboxHeard() { return jukeboxHeard; }
 
     // ===================== 表达 =====================
 
@@ -121,6 +208,11 @@ public class FrendKnowledge {
         var topM = top(mined);
         if (topM != null) sb.append("挖得最多的是 ").append(shortId(topM.getKey())).append("(").append(topM.getValue()).append(" 块);");
         if (creeperBlasts > 0) sb.append("被苦力怕炸过 ").append(creeperBlasts).append(" 回——现在见它我都躲着走;");
+        if (raidersKilled > 0) sb.append("跟抢村子的强盗干过 ").append(raidersKilled).append(" 架;");
+        if (firsts.contains("dragon_kill")) sb.append("末影龙是咱们一起打倒的;");
+        else if (firsts.contains("wither_kill")) sb.append("咱们连凋灵都放倒过;");
+        if (petsKnown > 0) sb.append("认得你家 ").append(petsKnown).append(" 只小家伙;");
+        if (lightningHits > 0) sb.append("还被雷劈过 ").append(lightningHits).append(" 回——大难不死;");
         if (cropsHarvested >= 10) sb.append("收过 ").append(cropsHarvested).append(" 茬庄稼;");
         if (fishCaught >= 5) sb.append("钓上来 ").append(fishCaught).append(" 条(手感练出来了);");
         if (myDeaths > 0) sb.append("死过 ").append(myDeaths).append(" 回,魂还在,不怕。");
@@ -129,7 +221,7 @@ public class FrendKnowledge {
 
     /** 闲聊偶尔来一句见识(随机挑一个话头);没啥可说返回 null。 */
     public String randomInsight(Random random) {
-        int pick = random.nextInt(6);
+        int pick = random.nextInt(9);
         var topK = top(kills);
         if (pick == 0 && topK != null && topK.getValue() >= 10) {
             return "你知道吗,咱俩到现在打了 " + topK.getValue() + " 只" + topK.getKey() + "了……都快打出感情了。";
@@ -150,6 +242,15 @@ public class FrendKnowledge {
         if (pick == 5 && cropsHarvested >= 20) {
             return "地里的活我熟——" + cropsHarvested + " 茬庄稼是我收的,哪根熟哪根青我一眼就看出来。";
         }
+        if (pick == 6 && raidersKilled >= 3) {
+            return "那帮抢村子的强盗——遇上咱俩算他们倒霉,都干翻 " + raidersKilled + " 个了。";
+        }
+        if (pick == 7 && lightningHits > 0) {
+            return "跟你说个事:我可是被雷劈过还活蹦乱跳的——一般人没这待遇。";
+        }
+        if (pick == 8 && firsts.contains("dragon_kill")) {
+            return "有时候想想还跟做梦似的……咱们真把末影龙打倒了。";
+        }
         return null;
     }
 
@@ -160,6 +261,9 @@ public class FrendKnowledge {
         var topK = top(kills);
         if (topK != null) sb.append(",打得最多的怪是").append(topK.getKey()).append("(").append(topK.getValue()).append(")");
         if (creeperBlasts > 0) sb.append(",被苦力怕炸过 ").append(creeperBlasts).append(" 次(你很怕它)");
+        if (firsts.contains("dragon_kill")) sb.append(",你们一起打倒过末影龙(共同的高光时刻,值得骄傲)");
+        else if (firsts.contains("wither_kill")) sb.append(",你们一起打倒过凋灵(共同的高光时刻)");
+        if (lightningHits > 0) sb.append(",你被雷劈过还活着(你引以为豪)");
         sb.append("。");
         return sb.toString();
     }
@@ -181,6 +285,13 @@ public class FrendKnowledge {
         tag.putInt("MyDeaths", myDeaths);
         tag.putInt("FishCaught", fishCaught);
         tag.putInt("CropsHarvested", cropsHarvested);
+        tag.putInt("RaidersKilled", raidersKilled);
+        tag.putInt("LightningHits", lightningHits);
+        tag.putInt("JukeboxHeard", jukeboxHeard);
+        tag.putInt("PetsKnown", petsKnown);
+        NbtList p = new NbtList();
+        for (String s : petIds) p.add(NbtString.of(s));
+        tag.put("PetIds", p);
         return tag;
     }
 
@@ -198,6 +309,13 @@ public class FrendKnowledge {
         myDeaths = tag.getInt("MyDeaths");
         fishCaught = tag.getInt("FishCaught");
         cropsHarvested = tag.getInt("CropsHarvested");
+        raidersKilled = tag.getInt("RaidersKilled");
+        lightningHits = tag.getInt("LightningHits");
+        jukeboxHeard = tag.getInt("JukeboxHeard");
+        petsKnown = tag.getInt("PetsKnown");
+        petIds.clear();
+        NbtList p = tag.getList("PetIds", NbtElement.STRING_TYPE);
+        for (int i = 0; i < p.size(); i++) petIds.add(p.getString(i));
     }
 
     // ===================== 小工具 =====================

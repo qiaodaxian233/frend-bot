@@ -583,9 +583,10 @@ FabricLoader.getConfigDir、NbtCompound#getKeys、Entity#random 类型为 math.r
 - ✅ 探索:生物群系首见(常见群系带中文味)、维度切换(v0.9 已有)
 - ✅ 生死:自己死过几世(灵魂记得)、你的死亡地点(v0.11 已有)
 - ✅ 社交:你的口头禅(v0.18)、你让记的事(v0.10)、双向救援(v0.10/0.4)
-- ⏳ 钓鱼/种田(先要有这两个任务)、村民交易、附魔/酿造、Boss 战(凋灵/末影龙专属感慨)、
-  袭击事件、结构发现(村庄/要塞/古城——需结构检测 API)、驯服动物、天气极端事件(雷劈)、
-  音乐唱片、进度(advancement 联动)。挂账项每个只需在对应事件处加一行 knowledge.recordX。
+- ✅ 钓鱼/种田(v0.21 销账)、Boss 战/袭击/雷劈/驯服/唱片(v0.28 销账,见 m29)
+- ⏳ 仍挂:村民交易与附魔/酿造(frend 自己不做这两件事,旁观玩家需 ScreenHandler 级钩子,
+  原版/Fabric 无现成事件)、结构发现(StructureAccessor 签名需专门研读映射)、进度联动
+  (无 Fabric advancement 事件,需 mixin 或轮询 diff,成本高收益低)。挂账项每个只需一行 knowledge.recordX。
 **扩展约定**:新知识一律走 FrendKnowledge 加 record 方法 + NBT 字段 + 表达出口,不散落。
 
 **【待编译验证】新增**:RegistryEntry#getKey(返回 Optional<RegistryKey>)、Registries.BLOCK.getId、
@@ -903,3 +904,34 @@ config v18→19:maxFrendsPerPlayer 默认 1→3、新增 crewChatter=true。
 自动测试第 12 关 crewChopsSeparateTrees(batchId=frendCrew):两树两 frend 非对称站位,
 断言两树全倒且两只包里都有木头(没分工会一只包圆一只空手)。
 【待编译验证】本轮全为已实证 API 的组合,新面仅 NbtCompound#getKeys。
+
+---
+
+## 里程碑 29 / v0.28 — 知识库清账(销 m20 挂账五类:Boss 战/袭击/雷劈/驯服/唱片)
+
+m20 立库时挂了十类"它该见识过的事",v0.21 销两类,本轮再销五类,全走扩展约定
+(FrendKnowledge 加 record 方法 + NBT 字段 + 表达出口,不散落)。剩三类挂账理由见 m20 清单更新。
+
+**感知钩子(三处,全部搭已有必经之路的车)**:
+1. **击杀处**(战斗白刃收尾 + 箭杀 AFTER_DEATH)统一走新入口 `FrendEntity#onSpecialKill`:
+   凋灵/末影龙 instanceof 判定 → 一生一次高光感慨 + **进大事记**("我们一起打倒了凋灵"
+   ——这才配叫共同经历);袭击者(RaiderEntity)→ 计数,首杀有话,第 10 个有碑。
+2. **damage()**:`source.isOf(DamageTypes.LIGHTNING_BOLT)` → 被雷劈,一生一次
+   "我还活着?哈哈我还活着!"(大难不死是勋章,summaryLine/randomInsight/llmBrief 三口都出)。
+3. **轮询**(搭 v0.19 群系轮询的车,错峰四路各 5 秒一查互岔 1 秒,开销摊平):
+   Boss 目击(32 格,一生一次的震撼,直发不走闲聊闸)、打雷头一回(走闸)、
+   宠物认亲(16 格 TameableEntity 主人匹配,UUID 去重 cap16,"以后咱们一起,多个伴")、
+   唱片(±5 格 JUKEBOX 方块 HAS_RECORD 状态,"干完活能再放一遍吗?")。
+
+**表达**:summaryLine +4 条、randomInsight 6→9 个话头(强盗账/雷劈勋章/屠龙如梦)、
+llmBrief 注入 Boss 高光与雷劈(LLM 闲聊会自己吹)。NBT +5 字段(含 PetIds 列表)。
+
+**自动测试第 13 关 knowledgeNbtRoundtrip**(纯逻辑关):五类计数往返保档 +
+**一生一次去重往返后仍生效**(firsts 集丢档的话它会重复感慨——那就穿帮了)。
+
+**取舍**:雷劈不做实体扫描(LightningEntity 寿命约 1 秒,5 秒轮询必漏,改 isThundering
++ damage 源双保险);宠物一次只认一只(话多怪);唱片找到一台即止。
+
+**【待编译验证】**:DamageSource#isOf + DamageTypes.LIGHTNING_BOLT、
+TameableEntity#getOwnerUuid/isTamed、Properties.HAS_RECORD、World#isThundering、
+BlockPos.iterate(区间遍历)。其余全为已实证 API 组合。
