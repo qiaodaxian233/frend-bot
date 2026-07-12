@@ -633,3 +633,42 @@ fishMaxCatches。意图白名单 19→24(farm/fish/smelt/guard_on/guard_off),执
 **【待编译验证】新增**:AbstractFurnaceBlockEntity(直接操作槽 0原料/1燃料/2产出)、
 CropBlock#isMature 可见性、Block.getRawIdFromState/getStateFromRawId、
 SoundEvents.ENTITY_FISHING_BOBBER_THROW/SPLASH 命名。
+
+---
+
+## 里程碑 22 / v0.21 — 全测试面板(作者点单;"先测再堆"从口号变成工具)
+
+**痛点**:22 个里程碑零实测,TESTPLAN 是纸面剧本——布置考场(发东西/刷怪/调时间/压血量)全靠
+玩家手打原版指令,重逢/纪念日这种"等 35 天"的功能**根本没法当场测**。
+
+**FrendTestPanel(聊天栏可点击测试台,`/frend test`,权限等级 2)**:
+- **七关剧本内建**:37 步全从 TESTPLAN 编码进 GATES 数据(desc 短句+悬浮出完整预期);
+- **[布置] 一键摆考场**:发道具给玩家/直接塞 frend 背包(它 2s 自动换装)/刷怪(僵尸骷髅苦力怕,
+  带方位)/入夜(13000 刚天黑不烧怪)/压血量(它压到 2 心测撤退,你压到 3 心测投喂)——
+  每步 Setup 函数式接口,返回"我干了什么"反馈;
+- **[✔][✘] 点一下记结果**:进度落盘 `config/frend/testpanel.json`(Gson,跨重启不丢),
+  记完原地刷新面板顺手测下一步;总面板七关各显 ✔✘⬜ 计数,红=有不过,绿=全过;
+- **[报告]**:汇总+✘ 步骤单列,整段复制回来就是合格报障;
+- **[重置]** 带二次确认(误点不清档);
+- **自检 `/frend test check`**(不用动手打的那部分,建议第一关之前先跑):实体注册 id /
+  config 版本与关键开关一览 / LLM 配置 sanity(backend=openai 但 baseUrl 空 → 点名)/
+  **灵魂档读写往返探针**(真写真读真比对再删,NbtIo 签名问题当场暴露)/ 附近 frend 状态行+岗位。
+
+**两个时间调试钩(没有它们,催泪功能永远没法当场验)**:
+- `/frend test skipdays N` → FrendSoul.debugQueueReunion 直接压待问候表,走到它跟前听分级重逢;
+- `/frend test days N` → FrendMemory.debugAddDays 走 bonusDays 拨相识天数,纪念日检测自然触发;
+  第五关对应步骤的 [布置] 就是调它们(纪念日布置自动算"拨到下一个 10/100/365")。
+
+**顺手销 v0.19 挂账两笔**(当时写着"先要有这两个任务"——v0.20 有了):FrendKnowledge 加
+fishCaught/cropsHarvested(recordFish/recordHarvest 一行接进 FishTask 咬钩点与 FarmTask 收割点),
+按扩展约定四件套齐:字段+入口+表达(summaryLine 两分句、randomInsight 话头 4→6)+NBT 双向,随魂跨档。
+
+**设计取舍**:面板是聊天栏可点击文本而非 GUI Screen——服务端纯文本零客户端依赖,API 面只有
+Text/ClickEvent/HoverEvent 三件,沙箱编译不了的项目能少赌一个是一个。权限等级 2 挂在 test 整棵
+子树上(发东西刷怪是测试工具不是玩法)。
+
+**【待编译验证】新增**:ClickEvent/HoverEvent 构造器(1.21.1 仍是 new ClickEvent(Action, String),
+1.21.5+ 才改 record 子类,报错优先查这)、Style#withClickEvent/withHoverEvent/withColor(Formatting)、
+EntityType#spawn(ServerWorld, BlockPos, SpawnReason) 三参、PlayerInventory#offerOrDrop、
+ServerWorld#setTimeOfDay、IntegerArgumentType 中文参数名(brigadier 任意字符串,应无碍)。
+config 无新字段,版本不动(v18)。

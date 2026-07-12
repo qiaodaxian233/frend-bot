@@ -28,9 +28,11 @@
 
 - frend = **本地运行的 Minecraft 陪伴机器人**:类玩家 NPC,像朋友一样陪玩家生存/聊天/干活/打怪,完全离线。蓝图见 `docs/DESIGN.md`,一句话产品定义:*不是外挂,不是刷材料机器,而是会记住你、陪你冒险的本地 AI 朋友*。
 - 核心架构原则(v0.4 起生效,现在就要守):**LLM 永不直接控制游戏**,只产出意图,执行走白名单技能 DSL。
-- 当前进度:**里程碑 21 / v0.20(过日子全家桶)已落地**;m1~m20 已本地编译全绿,m21 待编译,**游戏内实测为零**(实测剧本见 TESTPLAN.md,先测再堆)。
+- 当前进度:**里程碑 22 / v0.21(全测试面板)已落地**;m1~m20 已本地编译全绿,m21/m22 待编译,**游戏内实测为零**——面板就是为开测造的:游戏里 `/frend test`(自检先跑 `/frend test check`)。
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
+
+m22(v0.21 全测试面板,作者点单,"先测再堆"落成工具):FrendTestPanel=聊天栏可点击测试台 `/frend test`(权限 2,发东西刷怪调时间是测试工具不是玩法),七关 37 步剧本内建(悬浮出预期),[布置]一键摆考场(发道具/塞 frend 包/刷怪带方位/入夜 13000/压血量),[✔][✘]记结果落盘 config/frend/testpanel.json 跨重启,[报告]✘单列即报障格式,[重置]二次确认;自检 `/frend test check`=注册/配置一览/LLM sanity/**灵魂档读写往返探针**(NbtIo 签名问题当场暴露)/frend 状态;**两个时间调试钩**=skipdays N(FrendSoul.debugQueueReunion 压待问候表测分级重逢)+days N(FrendMemory.debugAddDays 拨 bonusDays 测纪念日),第五关[布置]自动调;顺手销 v0.19 挂账两笔=FrendKnowledge fishCaught/cropsHarvested 四件套(接 FishTask 咬钩+FarmTask 收割);取舍=聊天面板不做 GUI Screen(API 面只 Text/ClickEvent/HoverEvent 三件少赌);config 不动 v18。 · 上一里程碑
 
 m21(v0.20 过日子全家桶,作者点单五件):看家=STAY 记锚点(不落盘 lazy 脚下)+CombatGoal 绕锚 guardRange(16)扫敌主动出击+拴绳 1.75 倍出圈放弃+打完回岗,`/frend guard on|off`,**KEY_GUARD_OFF 先于 ON 匹配**("不用看家"含"看家");铁器链=SmeltTask 真熔炉状态机 FIND→GO→LOAD→WAIT→COLLECT,没炉 8 圆石自己盘,不动别人的炉(槽非空跳过),没煤烧木炭救急,**燃料单一制**(炉燃料槽仅一格,煤 1 顶 8 否则全板 2 顶 3 缩批退料),收尾 reclaim 还炉于民,决策阶梯 1.6;主动升级=CraftTask 档位制(木0石1铁2金按石钻3不折腾),craftable>owned 即换代不等报废,配比统一 3 材+2 棍(剑差异抹平已知取舍);FarmTask=只收熟(CropBlock#isMature)四大田收一茬补一茬,先查距离再扣种子(顺序修过),缺种进 pendingReplant 欠账过期如实汇报,阶梯 1.7(autonomyFarm);FishTask=模拟竿(原版浮漂绑死玩家),真水边真等竿真掉耐久,渔获原版口径 85/10/5 **不给附魔书**,挨打收竿,autoEquip 钓鱼中不换手,**刻意不进阶梯**(情调不是家务);意图 19→24;config v17→v18。 · 上一里程碑
 

@@ -43,6 +43,10 @@ public class FrendKnowledge {
 
     /** 教训:被苦力怕炸的次数(直接换算安全距离)。 */
     private int creeperBlasts = 0;
+    /** v0.21 过日子见识:钓上来多少条(垃圾也算——钓鱼佬从不空军)。 */
+    private int fishCaught = 0;
+    /** v0.21 过日子见识:收过多少茬庄稼。 */
+    private int cropsHarvested = 0;
     /** 自己死过几回(灵魂记得每一世)。 */
     private int myDeaths = 0;
 
@@ -90,6 +94,12 @@ public class FrendKnowledge {
 
     public void recordMyDeath() { if (!off()) myDeaths++; }
 
+    /** v0.21 钓鱼见识(销 v0.19 挂账)。 */
+    public void recordFish() { if (!off()) fishCaught++; }
+
+    /** v0.21 种田见识(销 v0.19 挂账)。 */
+    public void recordHarvest() { if (!off()) cropsHarvested++; }
+
     // ===================== 知识改变行为 =====================
 
     /** 教训换算:被苦力怕炸得越多,离它越远(封顶 +3 格)。战斗 Goal 直接用。 */
@@ -111,13 +121,15 @@ public class FrendKnowledge {
         var topM = top(mined);
         if (topM != null) sb.append("挖得最多的是 ").append(shortId(topM.getKey())).append("(").append(topM.getValue()).append(" 块);");
         if (creeperBlasts > 0) sb.append("被苦力怕炸过 ").append(creeperBlasts).append(" 回——现在见它我都躲着走;");
+        if (cropsHarvested >= 10) sb.append("收过 ").append(cropsHarvested).append(" 茬庄稼;");
+        if (fishCaught >= 5) sb.append("钓上来 ").append(fishCaught).append(" 条(手感练出来了);");
         if (myDeaths > 0) sb.append("死过 ").append(myDeaths).append(" 回,魂还在,不怕。");
         return sb.toString();
     }
 
     /** 闲聊偶尔来一句见识(随机挑一个话头);没啥可说返回 null。 */
     public String randomInsight(Random random) {
-        int pick = random.nextInt(4);
+        int pick = random.nextInt(6);
         var topK = top(kills);
         if (pick == 0 && topK != null && topK.getValue() >= 10) {
             return "你知道吗,咱俩到现在打了 " + topK.getValue() + " 只" + topK.getKey() + "了……都快打出感情了。";
@@ -131,6 +143,12 @@ public class FrendKnowledge {
         }
         if (pick == 3 && creeperBlasts >= 2) {
             return "跟你说,苦力怕那玩意儿——炸过我 " + creeperBlasts + " 回,现在我隔老远就绕。";
+        }
+        if (pick == 4 && fishCaught >= 8) {
+            return "我都钓上来 " + fishCaught + " 条了……哪天咱俩比比,看谁先空军。";
+        }
+        if (pick == 5 && cropsHarvested >= 20) {
+            return "地里的活我熟——" + cropsHarvested + " 茬庄稼是我收的,哪根熟哪根青我一眼就看出来。";
         }
         return null;
     }
@@ -161,6 +179,8 @@ public class FrendKnowledge {
         tag.put("Firsts", f);
         tag.putInt("CreeperBlasts", creeperBlasts);
         tag.putInt("MyDeaths", myDeaths);
+        tag.putInt("FishCaught", fishCaught);
+        tag.putInt("CropsHarvested", cropsHarvested);
         return tag;
     }
 
@@ -176,6 +196,8 @@ public class FrendKnowledge {
         for (int i = 0; i < f.size(); i++) firsts.add(f.getString(i));
         creeperBlasts = tag.getInt("CreeperBlasts");
         myDeaths = tag.getInt("MyDeaths");
+        fishCaught = tag.getInt("FishCaught");
+        cropsHarvested = tag.getInt("CropsHarvested");
     }
 
     // ===================== 小工具 =====================

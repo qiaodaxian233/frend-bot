@@ -125,6 +125,11 @@ public final class FrendSoul {
         return PENDING_REUNION.remove(owner);
     }
 
+    /** v0.21 测试面板调试钩:模拟"你离线了 n 天刚回来"——直接压待问候表,frend 见到你就说重逢话。 */
+    public static void debugQueueReunion(UUID owner, long days) {
+        PENDING_REUNION.put(owner, Math.max(0, days));
+    }
+
     /** 按离开天数分级的重逢话——设计目标:一个月以上要能把人看哭。 */
     public static String reunionLine(long days) {
         if (days <= 0) return "回来啦!走,今天干点啥?";

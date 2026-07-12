@@ -75,6 +75,7 @@ public class FarmTask extends FrendTask {
         Block cropBlock = state.getBlock();
         if (breakTick(target, 8)) {
             harvested++;
+            frend.getKnowledge().recordHarvest(); // v0.21 销 v0.19 挂账:种田进见识
             // 记补种欠账(掉落的种子要几 tick 才落地被捡到,直接补种多半没种子)
             pendingReplant.add(new long[]{target.asLong(),
                     Block.getRawIdFromState(cropBlock.getDefaultState()), frend.age + 200});

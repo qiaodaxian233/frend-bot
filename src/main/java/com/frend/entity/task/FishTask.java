@@ -118,6 +118,7 @@ public class FishTask extends FrendTask {
 
         ItemStack loot = rollLoot();
         caught++;
+        frend.getKnowledge().recordFish(); // v0.21 销 v0.19 挂账:钓鱼进见识
         ItemStack rest = frend.getInventory().addStack(loot.copy());
         if (!rest.isEmpty()) frend.dropStack(rest);
         if (caught == 1 || frend.getRandom().nextFloat() < 0.3f) {

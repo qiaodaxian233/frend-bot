@@ -135,6 +135,9 @@ public final class FrendCommands {
                         )
 
                         .then(CommandManager.literal("dismiss").executes(FrendCommands::dismiss))
+
+                        // v0.21 全测试面板(需要权限等级 2:发东西/刷怪/调时间)
+                        .then(FrendTestPanel.commandTree())
         ));
     }
 

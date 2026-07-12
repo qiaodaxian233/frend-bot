@@ -84,6 +84,11 @@ public class FrendMemory {
         this.bonusDays = Math.max(0L, snapshotDays);
     }
 
+    /** v0.21 测试面板调试钩:相识天数直接 +n(走 bonusDays,纪念日检测会自然触发)。 */
+    public void debugAddDays(long n) {
+        this.bonusDays = Math.max(0L, this.bonusDays + n);
+    }
+
     /** v0.18 还是一张白纸吗(灵魂只灌进白纸,不覆盖已经活过的)。 */
     public boolean isFresh() {
         return kills == 0 && rescues == 0 && ownerSaves == 0
