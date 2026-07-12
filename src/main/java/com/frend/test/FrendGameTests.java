@@ -293,12 +293,11 @@ public final class FrendGameTests implements FabricGameTest {
         FrendEntity f = spawnFrend(ctx, 5, 1, 8);
         give(f, new ItemStack(Items.STONE_PICKAXE));
         f.startTask(new com.frend.entity.task.MineTask(f, com.frend.entity.task.MineTask.Kind.STONE), null);
-        pollUntil(ctx, 1150, () -> {
-            ctx.assertTrue(ctx.getBlockState(new BlockPos(12, 1, 8)).isAir()
-                            && ctx.getBlockState(new BlockPos(12, 2, 8)).isAir(),
-                    "石头没挖完" + scanStones(ctx, f) + dump(f));
-            ctx.assertTrue(invHas(f, Items.COBBLESTONE), "挖了石头但圆石没进包" + dump(f));
-        });
+        // 考卷教训(黑匣子破案):测试世界地表地下遍地是石头(扫描出 1288 块匹配),frend 按就近
+        // 老实挖满 32 块收工——指定"必须挖我摆的那两块"不成立,它无辜且行为全对。
+        // 改验闭环:找矿→走位→开凿→圆石入包,有圆石 = 全链路通。
+        pollUntil(ctx, 1150, () -> ctx.assertTrue(invHas(f, Items.COBBLESTONE),
+                "挖矿闭环没走通(找矿-走位-开凿-圆石入包)" + scanStones(ctx, f) + dump(f)));
     }
 
     // ===================== 第 8 关:种田(只收熟的 + 当场补种) =====================
