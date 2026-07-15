@@ -17,7 +17,7 @@ public class FrendConfig {
     private static FrendConfig INSTANCE;
 
     /** 配置 schema 版本。默认值重平衡时 +1,加载旧版本文件会在日志警告。 */
-    public static final int CURRENT_CONFIG_VERSION = 19;
+    public static final int CURRENT_CONFIG_VERSION = 20;
     public int configVersion = CURRENT_CONFIG_VERSION;
 
     // ============ 召唤 ============
@@ -219,6 +219,13 @@ public class FrendConfig {
     public boolean guardWhenStay = true;
     /** 看家警戒半径(格,绕锚点扫,不绕自己——追怪漂移后扫描圈不能跟着漂)。 */
     public double guardRange = 16.0;
+
+    // ===== v0.29 作息与形象 =====
+    /** 夜里自己找床睡觉。STAY:附近没怪才敢睡(看家扫到怪立刻惊醒);FOLLOW:你睡它才睡,
+     *  只有一张床就让给你、自己守夜。任何模式一叫就醒、挨打就醒、天亮自己醒。 */
+    public boolean sleepEnabled = true;
+    /** 找床半径(格,y±3)。 */
+    public int sleepSearchRadius = 10;
     /** 一炉最多烧多少个(真熔炉真火候,10 秒一个,贪多站一下午)。 */
     public int smeltBatchMax = 16;
     /** 自主行动顺手收庄稼(只收熟透的,青苗一根不碰,收完补种)。 */

@@ -55,6 +55,10 @@ public final class FrendChatHandler {
     // "不用看家"含"看家",OFF 必须先匹配
     private static final String[] KEY_GUARD_OFF = {"不用看家", "别看家", "不用守"};
     private static final String[] KEY_GUARD_ON  = {"看家", "守着家", "守家", "看好家", "guard"};
+    // v0.29 作息与形象。WAKE 必须先于 SLEEP 匹配("别睡了"不能被解析成去睡觉)
+    private static final String[] KEY_WAKE  = {"起床", "醒醒", "别睡了", "起来干活"};
+    private static final String[] KEY_SLEEP = {"去睡觉", "睡吧", "睡一觉", "眯一会", "去睡"};
+    private static final String[] KEY_SKIN  = {"换个形象", "换皮肤", "换个样子", "换个造型"};
     private static final String[] KEY_DEPOSIT = {"存箱子", "回家存", "存东西", "去存", "deposit"};
     private static final String[] KEY_WORKSTOP = {"收工", "别干了", "别挖了", "别砍了", "休息吧"};
 
@@ -224,6 +228,23 @@ public final class FrendChatHandler {
             frend.setMode(FrendEntity.Mode.STAY);
             FrendConfig.get().guardWhenStay = true;
             frend.sayDelayed("放心去吧,家有我盯着——摸进来的怪一只都别想走。");
+        } else if (matches(text, KEY_WAKE)) {
+            // v0.29 叫起床:睡着立刻醒;没睡就嘴硬一句
+            if (frend.isSleeping()) {
+                frend.wakeUp();
+                frend.say("嗯?!这就起这就起——我就眯了一小会儿。");
+            } else if (nearest) {
+                frend.sayDelayed("我没睡啊,瞪着眼呢。");
+            }
+        } else if (matches(text, KEY_SLEEP)) {
+            // v0.29 撵它去睡:条件不满足(白天/没床/下界)它会自己顶嘴,台词在 trySleepRoutine 里
+            frend.trySleepRoutine(FrendConfig.get(), true);
+        } else if (matches(text, KEY_SKIN)) {
+            // v0.29 换形象只落最近那只(同起名):不然一句话三只集体整容
+            if (nearest) {
+                frend.setSkinIndex(frend.getSkinIndex() + 1);
+                frend.sayDelayed("锵锵——换了身行头,怎么样,精神不?");
+            }
         } else if (matches(text, KEY_ORE)) {
             frend.startTask(new com.frend.entity.task.MineTask(frend, com.frend.entity.task.MineTask.Kind.ORE), "找煤铁去,有露头的都归咱。");
         } else if (matches(text, KEY_WORKSTOP) && frend.isWorking()) {
@@ -408,6 +429,12 @@ public final class FrendChatHandler {
             case "combat_off" -> { FrendConfig.get().combatEnabled = false; sayOr(frend, say, "好,我不动手了。"); }
             case "auto_on" -> { FrendConfig.get().autonomyEnabled = true; sayOr(frend, say, "好嘞,我自己看着办。"); }
             case "auto_off" -> { FrendConfig.get().autonomyEnabled = false; sayOr(frend, say, "收到,没你的话我不乱动。"); }
+            // v0.29 作息:与关键词分支同一套调用(顶嘴台词在 trySleepRoutine 内部)
+            case "sleep" -> frend.trySleepRoutine(FrendConfig.get(), true);
+            case "wake" -> {
+                if (frend.isSleeping()) { frend.wakeUp(); frend.say(orDefault(say, "这就起这就起!")); }
+                else sayOr(frend, say, "我没睡啊,瞪着眼呢。");
+            }
             case "status" -> frend.sayDelayed(statusLine(frend));                                    // 真实数据,不让模型编
             case "memory" -> frend.sayDelayed(frend.getMemory().recapLine(frend.getWorld().getTime())); // 同上
             default -> { return false; } // none 或白名单外 → 纯聊天
@@ -453,6 +480,7 @@ public final class FrendChatHandler {
                       + "chop=砍树/stone=挖石头/ore=找矿/tunnel=挖隧道/deep=下矿挖钻石/craft=做工具/torch=搓火把/"
                       + "farm=收庄稼种田/fish=钓鱼/smelt=开炉烧矿炼铁/guard_on=看家守家/guard_off=不用看家/"
                       + "stop=停下手头的活/combat_on=开打保护对方/combat_off=别打了/auto_on=自由活动/auto_off=听指挥/"
+                      + "sleep=去睡觉/wake=起床别睡了/"
                       + "status=报告状态/memory=回忆往事/none=只是聊天。"
                       + "say 是你嘴上的回应,口语一句话。除了这一行 JSON 什么都别输出。"
                     : "你没有能力执行任何游戏操作;朋友想让你搭把手,提醒他说关键词:跟我来/停下/过来/回家/报告状态。")

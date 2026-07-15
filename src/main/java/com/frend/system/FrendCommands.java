@@ -65,6 +65,13 @@ public final class FrendCommands {
                                 .then(CommandManager.argument("名字", com.mojang.brigadier.arguments.StringArgumentType.greedyString())
                                         .executes(ctx -> nearestOwned(ctx, f -> // v0.27 起名只落最近那只
                                                 f.renameBy(com.mojang.brigadier.arguments.StringArgumentType.getString(ctx, "名字"))))))
+                        // v0.29 换形象(0史蒂夫 1艾莉克斯 2阿里 3艾费 4凯 5玛肯娜 6努尔 7桑尼 8祖里),只落最近那只
+                        .then(CommandManager.literal("skin")
+                                .then(CommandManager.argument("编号", com.mojang.brigadier.arguments.IntegerArgumentType.integer(0, FrendEntity.SKIN_COUNT - 1))
+                                        .executes(ctx -> nearestOwned(ctx, f -> {
+                                            f.setSkinIndex(com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(ctx, "编号"));
+                                            f.sayDelayed("锵锵——换了身行头,精神不?");
+                                        }))))
 
                         .then(CommandManager.literal("work")
                                 .then(CommandManager.literal("chop").executes(ctx -> forEachOwned(ctx, f ->

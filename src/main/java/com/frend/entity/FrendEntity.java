@@ -164,6 +164,28 @@ public class FrendEntity extends PathAwareEntity {
         }
     }
 
+    // ===== v0.29 形象:全仓第一个 DataTracker(皮肤号要让客户端渲染器看见,NBT 只在服务端不够) =====
+    // 【待编译验证】initDataTracker(DataTracker.Builder) 签名——1.20.5 起从无参改为 Builder 入参。
+    private static final net.minecraft.entity.data.TrackedData<Integer> SKIN =
+            net.minecraft.entity.data.DataTracker.registerData(FrendEntity.class,
+                    net.minecraft.entity.data.TrackedDataHandlerRegistry.INTEGER);
+    /** 九款原版默认皮肤:0史蒂夫 1艾莉克斯 2阿里 3艾费 4凯 5玛肯娜 6努尔 7桑尼 8祖里。 */
+    public static final int SKIN_COUNT = 9;
+
+    @Override
+    protected void initDataTracker(net.minecraft.entity.data.DataTracker.Builder builder) {
+        super.initDataTracker(builder);
+        builder.add(SKIN, 0);
+    }
+
+    public int getSkinIndex() {
+        return this.dataTracker.get(SKIN);
+    }
+
+    public void setSkinIndex(int idx) {
+        this.dataTracker.set(SKIN, Math.floorMod(idx, SKIN_COUNT));
+    }
+
     /** 属性:数值走配置(配置在实体注册之前加载)。 */
     public static DefaultAttributeContainer.Builder createFrendAttributes() {
         FrendConfig c = FrendConfig.get();
@@ -198,6 +220,7 @@ public class FrendEntity extends PathAwareEntity {
         this.ownerUuid = player.getUuid();
         memory.initFirstMet(this.getWorld().getTime()); // 相识时刻只记第一次
         // v0.18 灵魂:有档就接——只灌进"白纸"(新召的),不覆盖已经活过的
+        boolean skinFromSoul = false;
         if (FrendConfig.get().soulEnabled && memory.isFresh()) {
             net.minecraft.nbt.NbtCompound soul = com.frend.system.FrendSoul.loadSlot(player.getUuid(), soulId); // v0.27 按槽
             if (soul != null && soul.contains("Memory")) {
@@ -208,8 +231,16 @@ public class FrendEntity extends PathAwareEntity {
                     this.setCustomName(Text.literal(soul.getString("Name")));
                     this.setCustomNameVisible(true);
                 }
+                if (soul.contains("Skin")) { // v0.29 形象也是灵魂的一部分:换个天地还是那张脸
+                    setSkinIndex(soul.getInt("Skin"));
+                    skinFromSoul = true;
+                }
                 sayDelayed("……是你!哈,真的是你。换了个天地也没关系——咱们的事,我一件都没忘。");
             }
+        }
+        // v0.29 新朋友默认按魂号错开长相:三只并肩不再是三胞胎(1号史蒂夫/2号艾莉克斯/3号阿里…)
+        if (!skinFromSoul && getSkinIndex() == 0) {
+            setSkinIndex(Math.max(1, soulId) - 1);
         }
     }
 
@@ -248,8 +279,156 @@ public class FrendEntity extends PathAwareEntity {
 
     public void setMode(Mode mode) {
         this.mode = mode;
+        // v0.29 说好的一叫就醒:任何模式切换(跟我来/干活/回家)都先起床
+        if (this.isSleeping()) this.wakeUp();
+        this.targetBed = null;
         if (mode == Mode.STAY) this.guardAnchor = this.getBlockPos().toImmutable(); // v0.20 记岗位
         this.getNavigation().stop();
+    }
+
+    // ===== v0.29 作息:睡眠状态(不落盘;睡姿本身由原版 LivingEntity 的 Sleeping 坐标 NBT 保管) =====
+    private BlockPos targetBed = null;        // 已锁定的床(HEAD 半),走过去到了就睡
+    private boolean sleepingAsFollower = false; // 本次睡眠是"陪主人睡"(主人起了我也起)
+    private long lastSleepLineDay = -1;       // "我先眯会儿"一晚一句
+    private long lastVigilLineDay = -1;       // "你睡吧我守着"一晚一句
+    private long lastWakeLineDay = -1;        // 起床伸懒腰一早一句
+
+    /** 夜判(与 FrendAutonomy.isNight 同口径:13000~23000 是刷怪时段)。 */
+    public boolean isNightTime() {
+        long tod = this.getWorld().getTimeOfDay() % 24000L;
+        return tod >= 13000L && tod <= 23000L;
+    }
+
+    /**
+     * v0.29 找床睡觉。force=true 是主人喊"去睡觉"(条件不满足会顶嘴;顺手收工)。
+     * STAY:警戒圈里没怪才敢睡;FOLLOW:主人睡了才睡,只有一张床就让给主人、自己守夜。
+     * 【待编译验证】DimensionType#bedWorks(下界末地床会炸,原版就有这口径)。
+     */
+    public void trySleepRoutine(FrendConfig c, boolean force) {
+        if (this.getWorld().isClient || this.isSleeping() || targetBed != null) return;
+        if (!c.sleepEnabled && !force) return;
+        if (!this.getWorld().getDimension().bedWorks()) {
+            if (force) sayDelayed("这地方的床会炸……咱还是别试了!");
+            return;
+        }
+        if (!isNightTime()) {
+            if (force) sayDelayed("大白天睡什么觉——晚上再说!");
+            return;
+        }
+        if (isWorking()) {
+            if (!force) return;
+            stopTask("好嘞,收工睡觉!");
+        }
+        if (this.getTarget() != null) return; // 打着架呢,睡什么睡
+        long today = this.getWorld().getTimeOfDay() / 24000L;
+        if (mode == Mode.FOLLOW && !force) {
+            // 跟随:主人不睡我不睡;主人睡了附近没空床 → 守夜(一晚只说一句,朋友的觉比我的觉金贵)
+            PlayerEntity owner = getOwnerPlayer();
+            if (owner == null || !owner.isSleeping()) return;
+            BlockPos bed = findFreeBed(owner.getBlockPos(), c.sleepSearchRadius);
+            if (bed == null) {
+                if (lastVigilLineDay != today) {
+                    lastVigilLineDay = today;
+                    say("你睡吧,我守着——夜里有我呢。");
+                }
+                return;
+            }
+            targetBed = bed;
+            sleepingAsFollower = true;
+        } else {
+            if (mode == Mode.WORK && !force) return;
+            if (!force && hasHostileNearby(c.guardRange)) return; // 看家:有怪不睡
+            BlockPos bed = findFreeBed(this.getBlockPos(), c.sleepSearchRadius);
+            if (bed == null) {
+                if (force) sayDelayed("附近没床啊……我睡地上像什么话。");
+                return;
+            }
+            targetBed = bed;
+            sleepingAsFollower = false;
+        }
+        if (lastSleepLineDay != today) {
+            lastSleepLineDay = today;
+            sayDelayed("我先眯会儿……有事叫我,一叫就醒。");
+        }
+    }
+
+    /** 锁定床位后:走过去,到 2 格内就躺。床没了/被占了/情况变了就作罢。 */
+    private void tickGoToBed() {
+        if (this.age % 10 != 0) return;
+        if (!isNightTime() || this.getTarget() != null || isWorking()) { targetBed = null; return; }
+        net.minecraft.block.BlockState st = this.getWorld().getBlockState(targetBed);
+        if (!(st.getBlock() instanceof net.minecraft.block.BedBlock)
+                || st.get(net.minecraft.block.BedBlock.OCCUPIED)) { // 伙伴手快占了 → 下轮再找别的床
+            targetBed = null;
+            return;
+        }
+        if (this.getBlockPos().getSquaredDistance(targetBed) <= 4.0) {
+            this.getNavigation().stop();
+            // 【待编译验证】LivingEntity#sleep(BlockPos):设 SLEEPING 姿态+把床标成 OCCUPIED(村民同款)
+            this.sleep(targetBed);
+            targetBed = null;
+        } else {
+            this.getNavigation().startMovingTo(
+                    targetBed.getX() + 0.5, targetBed.getY(), targetBed.getZ() + 0.5, 1.0);
+        }
+    }
+
+    /**
+     * 睡着时的全部逻辑(mobTick 里睡着就只跑这个):醒判 + 睡觉回血。
+     * 醒的四个由头:天亮了 / 看家扫到怪(Goal 睡着也在扫,一有目标立刻惊醒) /
+     * 床没了 / 陪睡的主人起了。挨打惊醒在 damage() 另有一口。
+     * 【待编译验证】LivingEntity#getSleepingPosition 返回 Optional&lt;BlockPos&gt;、wakeUp()。
+     */
+    private void tickSleeping(FrendConfig c) {
+        if (this.age % 20 != 0) return;
+        BlockPos pos = this.getSleepingPosition().orElse(null);
+        boolean bedGone = pos == null
+                || !(this.getWorld().getBlockState(pos).getBlock() instanceof net.minecraft.block.BedBlock);
+        PlayerEntity owner = getOwnerPlayer();
+        boolean ownerGotUp = sleepingAsFollower && (owner == null || !owner.isSleeping());
+        boolean day = !isNightTime();
+        if (day || bedGone || ownerGotUp || this.getTarget() != null) {
+            this.wakeUp();
+            sleepingAsFollower = false;
+            if (this.getTarget() != null) {
+                say("谁?!……有情况!");
+            } else if (day) {
+                long today = this.getWorld().getTimeOfDay() / 24000L;
+                if (lastWakeLineDay != today) {
+                    lastWakeLineDay = today;
+                    sayDelayed("唔……天亮了?睡得真香。走,今天也好好干!");
+                }
+            }
+            return;
+        }
+        // 睡觉回血:睡眠质量好,比干熬着恢复快一倍
+        if (c.passiveRegen && this.age % 40 == 0 && this.getHealth() < this.getMaxHealth()) {
+            this.heal((float) c.regenAmount);
+        }
+    }
+
+    /** 警戒圈里有没有活着的敌对生物(睡前安检)。 */
+    private boolean hasHostileNearby(double range) {
+        return !this.getWorld().getEntitiesByClass(net.minecraft.entity.mob.HostileEntity.class,
+                this.getBoundingBox().expand(range), net.minecraft.entity.LivingEntity::isAlive).isEmpty();
+    }
+
+    /** 找最近的空床(HEAD 半块,y±3)。BlockPos.iterate 复用同一个 mutable,命中必须 toImmutable。 */
+    private BlockPos findFreeBed(BlockPos center, int radius) {
+        BlockPos best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (BlockPos p : BlockPos.iterate(center.add(-radius, -3, -radius), center.add(radius, 3, radius))) {
+            net.minecraft.block.BlockState st = this.getWorld().getBlockState(p);
+            if (!(st.getBlock() instanceof net.minecraft.block.BedBlock)) continue;
+            if (st.get(net.minecraft.block.BedBlock.PART) != net.minecraft.block.enums.BedPart.HEAD) continue;
+            if (st.get(net.minecraft.block.BedBlock.OCCUPIED)) continue;
+            double d = p.getSquaredDistance(center);
+            if (d < bestDist) {
+                bestDist = d;
+                best = p.toImmutable();
+            }
+        }
+        return best;
     }
 
     /** v0.20 看家锚点:进入 STAY 时的站位。看家清怪绕它扫、打完回它站岗。
@@ -566,6 +745,15 @@ public class FrendEntity extends PathAwareEntity {
         if (deathSpotWarnCooldown > 0) deathSpotWarnCooldown--;
         if (stuckTalkCooldown > 0) stuckTalkCooldown--;
 
+        // ===== v0.29 作息:睡着时只跑睡眠逻辑(醒判+回血),干活/自主/装备全停——人睡着还上什么班 =====
+        if (this.isSleeping()) {
+            tickSleeping(c);
+            return;
+        }
+        // 夜里找床(5s 一查,错峰 42);已锁定床位就走过去
+        if (c.sleepEnabled && this.age % 100 == 42) trySleepRoutine(c, false);
+        if (targetBed != null) tickGoToBed();
+
         // ===== v0.12 卡死自救:导航进行中但 2s 没挪窝 → 跳 → 停表重算 =====
         // 拉弓站桩/干活敲方块时导航是停的(isIdle),不会误判。最终兜底仍是跟随的 48 格传送保险丝。
         if (c.stuckRescue && this.age % 40 == 0) {
@@ -730,6 +918,13 @@ public class FrendEntity extends PathAwareEntity {
     @Override
     public boolean damage(DamageSource source, float amount) {
         boolean hurt = super.damage(source, amount);
+        // v0.29 睡梦中挨打:惊醒 + 惊叫(占用受伤台词冷却,不跟下面的"好疼"叠加刷屏)
+        if (hurt && !this.getWorld().isClient && this.isSleeping() && this.isAlive()) {
+            this.wakeUp();
+            sleepingAsFollower = false;
+            hurtTalkCooldown = 20 * 8;
+            say("谁?!偷袭是吧?!");
+        }
         if (hurt && !this.getWorld().isClient && hurtTalkCooldown <= 0 && this.isAlive()) {
             hurtTalkCooldown = 20 * 8;
             sayDelayed(HURT_LINES[this.random.nextInt(HURT_LINES.length)]);
@@ -1058,6 +1253,8 @@ public class FrendEntity extends PathAwareEntity {
 
     public void say(String msg) {
         if (this.getWorld().isClient) return;
+        // v0.29 一开口必先醒:被问状态/被搭话都会走到这——说好的"一叫就醒"(睡着说梦话像 NPC,醒了答话才像人)
+        if (this.isSleeping()) this.wakeUp();
         this.lastSaid = msg;
         this.lastTalkMillis = System.currentTimeMillis(); // 对话延续窗口从这一刻起算
         rememberChat("assistant", msg);
@@ -1165,6 +1362,7 @@ public class FrendEntity extends PathAwareEntity {
             nbt.putString("HomeDim", homeDimension);
         }
         if (lastDimension != null) nbt.putString("LastDim", lastDimension); // v0.9 跨维度复制实体后风味话状态不丢
+        nbt.putInt("Skin", getSkinIndex()); // v0.29 形象
         // 背包:拷贝到 DefaultedList 再走原版 Inventories(与 yongye/AccessoryStorage 同款写法)
         DefaultedList<ItemStack> list = DefaultedList.ofSize(inventory.size(), ItemStack.EMPTY);
         for (int i = 0; i < inventory.size(); i++) list.set(i, inventory.getStack(i));
@@ -1199,6 +1397,7 @@ public class FrendEntity extends PathAwareEntity {
             homeDimension = nbt.getString("HomeDim");
         }
         if (nbt.contains("LastDim")) lastDimension = nbt.getString("LastDim");
+        if (nbt.contains("Skin")) setSkinIndex(nbt.getInt("Skin")); // v0.29 形象
         if (nbt.contains("FrendInventory")) {
             DefaultedList<ItemStack> list = DefaultedList.ofSize(inventory.size(), ItemStack.EMPTY);
             Inventories.readNbt(nbt.getCompound("FrendInventory"), list, this.getWorld().getRegistryManager());

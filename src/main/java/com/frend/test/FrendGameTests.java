@@ -378,6 +378,22 @@ public final class FrendGameTests implements FabricGameTest {
         });
     }
 
+    // ===================== 第 14 关:皮肤号 NBT 往返(v0.29 跨档形象靠它保命) =====================
+
+    @GameTest(templateName = ARENA, tickLimit = 60)
+    public void skinNbtRoundtrip(TestContext ctx) {
+        FrendEntity a = spawnFrend(ctx, 4, 1, 4);
+        a.setSkinIndex(5); // 玛肯娜
+        net.minecraft.nbt.NbtCompound nbt = new net.minecraft.nbt.NbtCompound();
+        a.writeCustomDataToNbt(nbt);
+        FrendEntity b = spawnFrend(ctx, 12, 1, 12);
+        b.readCustomDataFromNbt(nbt);
+        ctx.addInstantFinalTask(() -> {
+            ctx.assertTrue(b.getSkinIndex() == 5, "皮肤号 NBT 往返丢了(重启/跨档会集体变回史蒂夫)");
+            ctx.assertTrue(a.getSkinIndex() == 5, "setSkinIndex 没落到 DataTracker");
+        });
+    }
+
     // ===================== 附加关:记忆 NBT 往返(纯逻辑,不用地形) =====================
 
     @GameTest(templateName = ARENA, tickLimit = 60)

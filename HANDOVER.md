@@ -32,6 +32,8 @@
 
 ## 0.5 状态行(最新在前,`· 上一里程碑` 分隔)
 
+m30(v0.29 作息与形象):睡觉=夜判 13000~23000 与自主同口径,STAY 警戒圈没怪才睡/FOLLOW 主人睡才睡、只有一张床让给主人自己守夜("你睡吧我守着"一晚一句)/WORK 不睡/bedWorks 维度闸(下界床炸);找床 sleepSearchRadius(10,y±3)HEAD 半块+!OCCUPIED,**iterate 命中必须 toImmutable**;醒判五由头(天亮/看家扫到怪惊醒/挨打 damage 单口占受伤冷却/床没了/陪睡主人起了);**一叫就醒收在 say() 一个口**(开口必先醒);睡眠态 mobTick 早退全停只回血(×2);形象=**全仓第一个 DataTracker**(SKIN int,initDataTracker(Builder)),九款原版 wide/ 默认皮肤零新资源,**形象随灵魂跨档**(soul 槽 Skin)+新朋友按魂号错开长相(三只不再三胞胎),/frend skin+聊天"换个形象"只落最近;意图 24→26(sleep/wake);config v20;自动测试第 14 关 skinNbtRoundtrip。 · 上一里程碑
+
 m29(v0.28 知识库清账,销 m20 挂账五类):感知三处=击杀统一入口 onSpecialKill(凋灵/末影龙一生一次高光+进大事记"我们一起打倒了凋灵",袭击者 RaiderEntity 计数首杀有话第 10 立碑)+damage 雷劈源判定(isOf LIGHTNING_BOLT,"我还活着?!"勋章)+错峰四路轮询(Boss 目击 32 格直发/打雷头一回/宠物认亲 TameableEntity 主人匹配 UUID 去重/唱片 HAS_RECORD 方块状态±5 格);表达=summaryLine+4 条+randomInsight 6→9 话头+llmBrief 注入 Boss 高光;NBT+5 字段含 PetIds;自动测试第 13 关 knowledgeNbtRoundtrip(计数往返+一生一次去重保档);仍挂三类理由在案(村民交易/附魔需 ScreenHandler 钩子、结构需映射研读、进度无事件)。 · 上一里程碑
 m28(v0.27 多 frend 协作,v0.18 挂账"分魂留待协作里程碑"兑现):分魂=灵魂档 v2 格式 Frends 子树每只一槽名字记忆见识互不串档+旧档读时视为 1 号魂迁移+soulId 随实体落盘+召唤分槽老朋友空槽优先召回;分工=FrendCrew 认领制(选中即认领/同伴跳过/FrendEntity 统一清账/60s 过期兜底/键带维度/不落盘自愈),砍树认领整棵弃树释放、挖矿种田认领单块;点名=name 命令与聊天改名只落最近那只(非最近吞句);不合唱=闲聊 LLM 兜底只最近接话、学话人人学但得意只最近喊、干活指令仍全体执行;风味=开工同种活 50% 搭话 crewChatter 可关;config v19(maxFrendsPerPlayer 1→3+crewChatter);自动测试第 12 关 crewChopsSeparateTrees(两树两只断言各有木头验分工)。 · 上一里程碑
 
@@ -117,7 +119,7 @@ src/main/java/com/frend/
 
 ## 2. 关键设计点(改代码前必知)
 
-- **模式只在服务端**:`FrendEntity.Mode` 走 NBT 持久化,客户端渲染不依赖它,所以**没有 DataTracker**。以后要做客户端可见状态(比如头顶模式图标)再加 DataTracker,别顺手把现有逻辑搬进去。
+- **模式只在服务端**:`FrendEntity.Mode` 走 NBT 持久化,客户端渲染不依赖它,所以模式**没有 DataTracker**。v0.29 起仓里有了第一个 DataTracker(`SKIN` 皮肤号,渲染器要看),口径不变:**只有客户端渲染真需要的状态才进 DataTracker**,别顺手把服务端逻辑搬进去。
 - **说话统一走 `FrendEntity.say/sayDelayed`**:按 `chatRadius` 广播、带前缀、延迟走 `FrendScheduler`。新增台词一律带**冷却**,设计红线是"不刷屏"。
 - **跟随不瞬移是设计原则**,`teleportDistance`(默认 48)只是防卡死保险丝且可关;别把它调小当常规手段。
 - **背包用原版 9×3 界面**(`GenericContainerScreenHandler.createGeneric9x3`),零自定义 screen/网络包;v1.0 配置 GUI 之前保持这个零成本方案。

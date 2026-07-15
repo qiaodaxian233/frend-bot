@@ -81,6 +81,7 @@ public final class FrendSoul {
             slot.put("Memory", frend.getMemory().toNbt());
             slot.put("Knowledge", frend.getKnowledge().toNbt()); // v0.19 见识随魂走
             slot.putLong("DaysSnapshot", frend.getMemory().daysTogether(frend.getWorld().getTime()));
+            slot.putInt("Skin", frend.getSkinIndex()); // v0.29 形象随魂走:换个天地还是那张脸
             if (frend.hasCustomName()) slot.putString("Name", frend.getDisplayName().getString());
             NbtCompound frends = root.contains("Frends") ? root.getCompound("Frends") : new NbtCompound();
             frends.put(String.valueOf(Math.max(1, frend.getSoulId())), slot); // 0=老档实体,归 1 号魂

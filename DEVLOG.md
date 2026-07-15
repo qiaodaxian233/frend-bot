@@ -935,3 +935,47 @@ llmBrief 注入 Boss 高光与雷劈(LLM 闲聊会自己吹)。NBT +5 字段(含
 **【待编译验证】**:DamageSource#isOf + DamageTypes.LIGHTNING_BOLT、
 TameableEntity#getOwnerUuid/isTamed、Properties.HAS_RECORD、World#isThundering、
 BlockPos.iterate(区间遍历)。其余全为已实证 API 组合。
+
+---
+
+## 里程碑 30 / v0.29 — 作息与形象(晚上会睡觉的朋友 + 九款皮肤每只一张脸)
+
+两块拼图都冲着"像真人"的下一层去:真人有作息、有长相。
+
+**睡觉(纯规则,红线照旧)**:
+- **入睡条件分模式**:STAY/看家 → 夜里(13000~23000,与自主的夜判同口径)警戒圈里没怪才敢睡;
+  FOLLOW → **主人睡了才睡**,附近只有一张床就让给主人、自己守夜——
+  "你睡吧,我守着——夜里有我呢。"(一晚只说一次,朋友的觉比我的觉金贵);
+  WORK 不睡;下界/末地床会炸,不试(`DimensionType#bedWorks` 原版口径)。
+- **找床**:`sleepSearchRadius`(10,y±3)找最近的空床(HEAD 半块 + !OCCUPIED),
+  走到 2 格内 `LivingEntity#sleep(pos)` 躺下(村民同款,自动标 OCCUPIED);
+  **BlockPos.iterate 复用 mutable,命中必须 toImmutable**(v0.19 群系轮询同款坑,再记一笔)。
+- **醒的五个由头**:天亮 / 看家 Goal 睡着也在扫、一有目标立刻惊醒("谁?!……有情况!") /
+  挨打惊醒(damage 里单独一口,占用受伤台词冷却防叠报) / 床没了 / 陪睡的主人起了。
+- **一叫就醒的实现**:不是在聊天层到处补 wakeUp,而是**收在 `say()` 一个口**——
+  它一开口必先醒(被问状态/被搭话都会走到这);睡着说梦话像 NPC,醒了答话才像人。
+- **睡着=下班**:mobTick 睡眠态早退,干活/自主/装备/插火把全停,只跑醒判+回血
+  (睡觉回血比干熬快一倍——睡一觉精神了)。
+- 台词全带"一晚/一早一句"去重;"去睡觉"白天喊会顶嘴("大白天睡什么觉"),没床也顶嘴。
+
+**形象(全仓第一个 DataTracker)**:
+- HANDOVER 立仓就写着"要做客户端可见状态再加 DataTracker"——皮肤号就是那个时刻:
+  渲染在客户端,NBT 只在服务端不够。`SKIN`(int) 走 `initDataTracker(Builder)`。
+- 九款**原版自带**默认皮肤(1.20.2 起 wide/ 目录九张宽臂格式,零自绘零新资源):
+  0史蒂夫 1艾莉克斯 2阿里 3艾费 4凯 5玛肯娜 6努尔 7桑尼 8祖里。
+- **形象随灵魂跨档**(soul 槽存 Skin):换个天地还是那张脸——上一版魂只记性格,这一版连脸一起记。
+- **新朋友按魂号错开长相**:1 号史蒂夫、2 号艾莉克斯、3 号阿里——三只并肩不再是三胞胎。
+- 出口:`/frend skin <0-8>`、聊天"换个形象/换皮肤"轮换(都只落最近那只,同起名口径)。
+
+**意图白名单 24→26**(sleep/wake),执行与关键词同源,红线一寸没动。
+config v19→v20:`sleepEnabled=true`、`sleepSearchRadius=10`。
+自动测试第 14 关 `skinNbtRoundtrip`(皮肤号 NBT 往返——丢了会集体变回史蒂夫)。
+
+**已知取舍**:睡着时 LookAt 类 Goal 仍会转头(视觉小瑕疵,原版睡姿渲染盖得住,不为它加开关);
+两只伙伴抢同一张床靠 OCCUPIED 自然让位(先到先睡,后到下轮另找);
+头顶模式图标继续不做(DataTracker 先例已开,以后要做只是加一个字段的事)。
+
+**【待编译验证】**:`initDataTracker(DataTracker.Builder)` 签名(1.20.5 起改 Builder 入参)、
+`LivingEntity#sleep(BlockPos)/wakeUp()/getSleepingPosition()`、`DimensionType#bedWorks()`、
+`BedBlock.PART/OCCUPIED + BedPart.HEAD`(net.minecraft.block.enums)、
+渲染器九张贴图文件名(steve/alex 已实证,其余七张待验,错了就报 MissingSprite 紫黑格)。
